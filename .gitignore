@@ -27,4 +27,7 @@ output/*
 assets/*
 
 # Temporary ignore !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-src/*
+# src/*
+
+# Editor build output (produced by `npm run build:ui`)
+src/ui/dist/

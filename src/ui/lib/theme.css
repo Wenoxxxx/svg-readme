@@ -1,0 +1,97 @@
+/*
+ * ojtrack theme — derived from Owen Jerusalem's portfolio.
+ * Near-black surfaces, #1b5def blue accent, Poppins headings + JetBrains Mono
+ * labels, subtle grid texture. Exposed as CSS variables so components stay
+ * consistent.
+ */
+:root {
+  /* surfaces */
+  --oj-bg: #0a0c12;
+  --oj-surface: #11141d;
+  --oj-surface-2: #161a25;
+  --oj-surface-3: #1d2230;
+  --oj-border: #232938;
+  --oj-border-strong: #2e3548;
+
+  /* text */
+  --oj-text: #e8ebf2;
+  --oj-text-muted: #8b93a7;
+  --oj-text-dim: #5d6478;
+
+  /* accent (the banner's own blue) */
+  --oj-accent: #1b5def;
+  --oj-accent-soft: rgba(27, 93, 239, 0.14);
+  --oj-accent-hover: #3a72ff;
+
+  /* status */
+  --oj-danger: #ef4444;
+
+  /* fonts */
+  --oj-font-sans: "Poppins", system-ui, -apple-system, sans-serif;
+  --oj-font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* radii */
+  --oj-radius: 10px;
+  --oj-radius-sm: 6px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--oj-bg);
+  color: var(--oj-text);
+  font-family: var(--oj-font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Subtle grid texture — same vibe as the banner's drifting background. */
+.oj-grid-texture {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+button {
+  font-family: var(--oj-font-sans);
+  cursor: pointer;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+input,
+textarea {
+  font-family: var(--oj-font-sans);
+}
+input:focus,
+textarea:focus {
+  border-color: var(--oj-accent) !important;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--oj-border-strong);
+  border-radius: 10px;
+  border: 2px solid var(--oj-bg);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3a4258;
+}
