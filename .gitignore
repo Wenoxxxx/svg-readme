@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Generated files
+output/
+
+# Environment files
+.env
+.env.local
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Ignore only generated output and assets
+output/*
+assets/*
+
+# Temporary ignore !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+src/*
