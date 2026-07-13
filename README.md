@@ -80,7 +80,7 @@ svg-readme/
 │   │   ├── App.css
 │   │   ├── App.tsx
 │   │   ├── index.css
-│   │   └── main.tsx
+│   │   └── main.tsx]
 │   ├── .gitignore
 │   ├── README.md
 │   ├── eslint.config.js
