@@ -68,16 +68,35 @@ Reference the raw file from your `<username>/<username>` profile repo:
 
 ```
 svg-readme/
-├── assets/
-│   └── fonts/              # local .ttf files Satori embeds into the SVG
-├── src/
-│   ├── components/
-│   │   └── Banner.tsx      # layout — positions, text, avatar frame, badge
-│   └── build-svg.tsx       # renders the component, injects CSS + hand-written SVG
-├── output/
-│   └── banner.svg          # generated file — this is what the README references
-├── package.json
-└── tsconfig.json
+├── app/
+│   ├── public/
+│   │   ├── favicon.svg
+│   │   └── icons.svg
+│   ├── src/
+│   │   ├── assets/
+│   │   │   ├── hero.png
+│   │   │   ├── react.svg
+│   │   │   └── vite.svg
+│   │   ├── App.css
+│   │   ├── App.tsx
+│   │   ├── index.css
+│   │   └── main.tsx
+│   ├── .gitignore
+│   ├── README.md
+│   ├── eslint.config.js
+│   ├── index.html
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── tsconfig.app.json
+│   ├── tsconfig.json
+│   ├── tsconfig.node.json
+│   └── vite.config.ts
+├── backend/
+│   ├── .gitignore
+│   ├── package-lock.json
+│   └── package.json
+├── .gitignore
+└── README.md
 ```
 
 ## How it works
