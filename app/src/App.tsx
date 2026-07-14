@@ -7,6 +7,7 @@ import About from "./pages/landing/About";
 import Contacts from "./pages/landing/Contacts";
 
 // EDITOR PAGES
+import Editor from "./pages/editor/Editor";
 
 export default function App() {
   return (
@@ -17,10 +18,9 @@ export default function App() {
           <Route path="/about" element={<About />} />
           <Route path="/contacts" element={<Contacts />} />
         </Route>
-      </Routes>
 
-
-      
+          <Route path="/editor" element={<Editor />} />
+      </Routes>      
     </Router>
   );
 }

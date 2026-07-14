@@ -8,8 +8,9 @@ interface TopNavProps {
 
 export default function TopNav({ className }: TopNavProps) {
   return (
-    <nav className={className || "top-nav"}>
-      <Link to="/" className="top-nav__logo">
+    <nav className={className || "top-nav flex items-center justify-content-between bg-gray-400 text-white p-4"}>
+      
+      <Link to="/" className="top-nav__logo w-10 h-10 ">
         <img src={ojIcon} alt="OJ Logo" />
         <span>svg-readme</span>
       </Link>
@@ -38,7 +39,7 @@ export default function TopNav({ className }: TopNavProps) {
 
       <div className="top-nav__actions">
         <a
-          href="https://github.com/Wenoxxxxxx/svg-readme"
+          href="https://github.com/Wenoxxxx/svg-readme"
           target="_blank"
           rel="noopener noreferrer"
           className="btn btn-outline btn-sm"
@@ -48,7 +49,7 @@ export default function TopNav({ className }: TopNavProps) {
           </svg>
           GitHub
         </a>
-        <Link to="/editor" className="btn btn-primary btn-sm">
+        <Link to="/Editor" className="btn btn-primary btn-sm">
           Open Editor →
         </Link>
       </div>

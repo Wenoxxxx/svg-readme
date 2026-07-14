@@ -1,26 +1,26 @@
-import TopNav from "../components/ui/TopNav";
-import Sidebar from "../components/ui/Sidebar";
-import RightBar from "../components/ui/RightBar";
-import { Outlet } from "react-router-dom";
+// src/layouts/EditorLayout.tsx
+import type { ReactNode } from "react";
+import EditorTopNav from "../components/ui/EditorTopNav";
+import EditorSidebar from "../components/ui/EditorSidebar";
+import EditorRightBar from "../components/ui/EditorRightBar";
 
-export default function EditorLayout() {
+interface EditorLayoutProps {
+  children: ReactNode;
+}
+
+export default function EditorLayout({ children }: EditorLayoutProps) {
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Top navigation */}
-      <TopNav />
+    <div className="h-screen w-screen flex flex-col bg-[#0e0e0e] text-white font-[Poppins]">
+      <EditorTopNav />
 
-      {/* Body: sidebar + content + rightbar */}
-      <div className="flex flex-1">
-        {/* Left sidebar */}
-        <Sidebar className="w-64 bg-gray-800 text-white" />
+      <div className="flex flex-1 overflow-hidden">
+        <EditorSidebar />
 
-        {/* Main content */}
-        <main className="flex-1 p-4 bg-gray-100">
-          <Outlet />
+        <main className="flex-1 overflow-auto flex items-center justify-center bg-[#151515]">
+          {children}
         </main>
 
-        {/* Right bar */}
-        <RightBar className="w-64 bg-gray-200" />
+        <EditorRightBar />
       </div>
     </div>
   );

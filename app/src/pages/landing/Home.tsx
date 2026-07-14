@@ -6,7 +6,7 @@ export default function Home() {
       <p className="text-lg mb-6">Build and customize your README with style.</p>
       <a
         href="/about"
-        className="px-6 py-3 bg-white text-blue-600 rounded-lg shadow hover:bg-gray-100 transition"
+        className="px-6 py-3 bg-white text-blue-600 shadow hover:bg-gray-100 transition"
       >
         Learn More
       </a>
