@@ -1,16 +1,41 @@
+import { ArrowLeft, Save, Download, Play, MousePointer2 } from "lucide-react";
+import { Link } from "react-router-dom";
+
 export default function EditorTopNav() {
   return (
-    <header className="h-14 shrink-0 flex items-center justify-between px-4 border-b border-white/10">
-      <div className="flex items-center gap-2">
-        <span className="font-[Poppins] font-semibold text-lg">SVG README</span>
-        <span className="font-[JetBrains_Mono] text-xs text-white/40">editor</span>
+    <header className="h-16 shrink-0 flex items-center justify-between px-6 border-b border-white/5 bg-[#09090b]/80 backdrop-blur-md z-10">
+      <div className="flex items-center gap-5">
+        <Link to="/" className="flex items-center gap-2 text-zinc-400 hover:text-zinc-100 transition-colors">
+          <ArrowLeft className="w-4 h-4" />
+        </Link>
+        <div className="h-4 w-px bg-white/10" />
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-md bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
+            <span className="font-[Poppins] font-bold text-[11px] text-white tracking-tighter">SVG</span>
+          </div>
+          <span className="font-[Poppins] font-medium text-[15px]">GitHub Readme Hero</span>
+          <span className="ml-1 px-2 py-0.5 rounded text-[11px] font-[JetBrains_Mono] bg-zinc-800/50 text-zinc-400 border border-white/5">
+            draft
+          </span>
+        </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <button className="px-3 py-1.5 text-sm border border-white/20 hover:bg-white/10 transition-colors">
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1 bg-zinc-900 rounded-lg border border-white/5 p-1.5 mr-4">
+          <button className="p-2 bg-zinc-800 rounded-md text-zinc-100 shadow-sm">
+            <MousePointer2 className="w-4 h-4" />
+          </button>
+          <button className="p-2 text-zinc-400 hover:text-zinc-100 transition-colors">
+            <Play className="w-4 h-4" />
+          </button>
+        </div>
+
+        <button className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white border border-white/10 hover:bg-white/5 rounded-md transition-all duration-200">
+          <Save className="w-4 h-4" />
           Save
         </button>
-        <button className="px-3 py-1.5 text-sm bg-[#1b5def] hover:bg-[#1b5def]/90 transition-colors">
+        <button className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-md hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.3)] transition-all duration-200 border border-blue-500/50">
+          <Download className="w-4 h-4" />
           Export SVG
         </button>
       </div>
