@@ -3,12 +3,12 @@ import { Type, Image as ImageIcon, Square, Circle, PenTool, LayoutGrid, MousePoi
 import LayerPanel, { type LayerType } from "../editorSidebar/LayerPanel";
 
 const initialLayers: LayerType[] = [
-  { id: "1", name: "Background", type: "shape", locked: true, visible: true },
-  { id: "2", name: "Avatar Ring", type: "circle", locked: false, visible: true },
-  { id: "3", name: "Hero Image", type: "image", locked: false, visible: true },
   { id: "4", name: "Main Title", type: "text", locked: false, visible: true, active: true },
   { id: "5", name: "Subtitle", type: "text", locked: false, visible: true },
+  { id: "2", name: "Avatar Ring", type: "circle", locked: false, visible: true },
+  { id: "3", name: "Hero Image", type: "image", locked: false, visible: true },
   { id: "6", name: "Decorative Dots", type: "group", locked: false, visible: false },
+  { id: "1", name: "Background", type: "shape", locked: true, visible: true },
 ];
 
 const tools = [
@@ -39,7 +39,13 @@ export default function EditorSidebar() {
         active: true
       };
 
-      setLayers(prev => [newLayer, ...prev.map(l => ({ ...l, active: false }))]);
+      setLayers(prev => {
+        const activeIndex = prev.findIndex(l => l.active);
+        const insertIndex = activeIndex >= 0 ? activeIndex : 0;
+        const newLayers = prev.map(l => ({ ...l, active: false }));
+        newLayers.splice(insertIndex, 0, newLayer);
+        return newLayers;
+      });
 
       // Revert back to select tool after adding
       setTimeout(() => setActiveTool("select"), 100);
