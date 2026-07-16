@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Type, Image as ImageIcon, Square, Circle, PenTool, LayoutGrid, MousePointer2 } from "lucide-react";
 import LayerPanel, { type LayerType } from "../editorSidebar/LayerPanel";
+import FramePanel, { type FrameSize } from "../editorSidebar/FramePanel";
 
 const initialLayers: LayerType[] = [
   { id: "4", name: "Main Title", type: "text", locked: false, visible: true, active: true },
@@ -21,7 +22,12 @@ const tools = [
   { id: "image", icon: <ImageIcon className="w-4 h-4" />, name: "Image" },
 ];
 
-export default function EditorSidebar() {
+interface EditorSidebarProps {
+  frameSize: FrameSize;
+  setFrameSize: (size: FrameSize) => void;
+}
+
+export default function EditorSidebar({ frameSize, setFrameSize }: EditorSidebarProps) {
   const [layers, setLayers] = useState<LayerType[]>(initialLayers);
   const [activeTool, setActiveTool] = useState("select");
 
@@ -73,6 +79,11 @@ export default function EditorSidebar() {
         </div>
       </div>
 
+      {/* Conditional Panels */}
+      {activeTool === 'frame' && (
+        <FramePanel frameSize={frameSize} setFrameSize={setFrameSize} />
+      )}
+      
       {/* Layers Section */}
       <LayerPanel layers={layers} setLayers={setLayers} />
     </aside>
