@@ -44,10 +44,11 @@ svg-readme/
 
 - [x] Initial CLI for SVG generation
 - [x] React + Vite frontend editor UI
+- [ ] Property functions per tool
 - [ ] Backend Express API for dynamic SVG rendering
-- [ ] User authentication and saved banners
 - [ ] More templates, fonts, and customizable themes
 - [ ] Export to PNG/JPEG format
+- [ ] User authentication and saved banners
 
 ## Getting Started
 

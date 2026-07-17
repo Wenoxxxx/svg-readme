@@ -20,14 +20,7 @@ import {
  */
 const TEMP_PROJECT_ID = "00000000-0000-0000-0000-000000000001";
 
-const fallbackLayers: LayerType[] = [
-  { id: "4", name: "Main Title",      type: "text",   locked: false, visible: true,  active: true },
-  { id: "5", name: "Subtitle",        type: "text",   locked: false, visible: true },
-  { id: "2", name: "Avatar Ring",     type: "circle", locked: false, visible: true },
-  { id: "3", name: "Hero Image",      type: "image",  locked: false, visible: true },
-  { id: "6", name: "Decorative Dots", type: "group",  locked: false, visible: false },
-  { id: "1", name: "Background",      type: "shape",  locked: true,  visible: true },
-];
+const fallbackLayers: LayerType[] = [];
 
 const tools = [
   { id: "select", icon: <MousePointer2 className="w-4 h-4" />, name: "Select" },
@@ -111,10 +104,15 @@ export default function EditorSidebar({ frameSize, setFrameSize }: EditorSidebar
   // ── Layer callbacks (called by LayerPanel after optimistic updates) ────────
   const handleLayerAdd = (layer: LayerType, insertIndex: number) => {
     createLayer(projectId, { id: layer.id, name: layer.name, orderIndex: insertIndex })
+      .then(() => {
+        // After successfully creating, we can optionally trigger a reorder sync for the other layers
+        setLayers(prev => {
+          reorderLayers(projectId, prev.map((l, i) => ({ id: l.id, orderIndex: i })))
+            .catch(console.error);
+          return prev;
+        });
+      })
       .catch(console.error);
-    setLayers(prev =>
-      reorderPayload(prev).map(l => l) // trigger reorder after add
-    );
   };
 
   const handleLayerDelete = (id: string) => {
