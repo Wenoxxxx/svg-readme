@@ -3,7 +3,7 @@
 A full-stack web application for generating animated SVG banners for your GitHub profile README. This project provides a visual editor to design your banner, along with a backend to generate the final SVG — complete with hand-injected CSS animations for effects like drifting grid backgrounds, morphing wave paths, and staggered fade-ins.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Wenoxxxxxx/svg-readme/main/output/banner.svg" width="100%" alt="Banner preview" />
+  <img src="https://raw.githubusercontent.com/Wenoxxxx/svg-readme/main/output/banner.svg" width="100%" alt="Banner preview" />
 </p>
 
 ## Overview
@@ -44,10 +44,11 @@ svg-readme/
 
 - [x] Initial CLI for SVG generation
 - [x] React + Vite frontend editor UI
+- [ ] Property functions per tool
 - [ ] Backend Express API for dynamic SVG rendering
-- [ ] User authentication and saved banners
 - [ ] More templates, fonts, and customizable themes
 - [ ] Export to PNG/JPEG format
+- [ ] User authentication and saved banners
 
 ## Getting Started
 
@@ -88,7 +89,7 @@ npm run dev         # Starts the nodemon development server on http://localhost:
 3. Reference the raw SVG file from your `<username>/<username>` profile repository:
 
 ```md
-<img src="https://raw.githubusercontent.com/Wenoxxxxxx/svg-readme/main/output/banner.svg" width="100%" alt="Owen Jerusalem banner" />
+<img src="https://raw.githubusercontent.com/Wenoxxxx/svg-readme/main/output/banner.svg" width="100%" alt="Owen Jerusalem banner" />
 ```
 
 ## License
