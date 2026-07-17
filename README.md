@@ -70,13 +70,15 @@ npm run dev
 
 ### 3. Run the Backend
 
-Navigate to the `backend` directory to run the API:
+Before running the backend, make sure your MySQL server is running (e.g., via XAMPP) and you have created a database called `svg_readme`.
+
+Then, navigate to the `backend` directory, set up the database tables using Prisma, and start the development server:
 
 ```bash
 cd backend
 npm install
-# Note: Ensure you have an entry point like index.js configured
-node index.js 
+npm run db:push     # Synchronizes your database tables with the Prisma schema
+npm run dev         # Starts the nodemon development server on http://localhost:3001
 ```
 
 ## Customization & Usage
