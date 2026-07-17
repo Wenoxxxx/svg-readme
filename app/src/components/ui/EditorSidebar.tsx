@@ -24,22 +24,21 @@ const fallbackLayers: LayerType[] = [];
 
 const tools = [
   { id: "select", icon: <MousePointer2 className="w-4 h-4" />, name: "Select" },
-  { id: "frame",  icon: <Maximize     className="w-4 h-4" />, name: "Frame" },
-  { id: "rect",   icon: <Square       className="w-4 h-4" />, name: "Rectangle" },
-  { id: "circle", icon: <Circle       className="w-4 h-4" />, name: "Circle" },
-  { id: "text",   icon: <Type         className="w-4 h-4" />, name: "Text" },
-  { id: "pen",    icon: <PenTool      className="w-4 h-4" />, name: "Pen" },
-  { id: "image",  icon: <ImageIcon    className="w-4 h-4" />, name: "Image" },
+  { id: "pen", icon: <PenTool className="w-4 h-4" />, name: "Pen" },
+  { id: "frame", icon: <Maximize className="w-4 h-4" />, name: "Frame" },
+  { id: "rect", icon: <Square className="w-4 h-4" />, name: "Shapes" },
+  { id: "text", icon: <Type className="w-4 h-4" />, name: "Text" },
+  { id: "image", icon: <ImageIcon className="w-4 h-4" />, name: "Image" },
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /** Map an ApiLayer (backend) → LayerType (frontend) */
 const toLayerType = (l: ApiLayer): LayerType => ({
-  id:      l.id,
-  name:    l.name,
-  type:    "shape", // Element types come in a future iteration
-  locked:  l.isLocked,
+  id: l.id,
+  name: l.name,
+  type: "shape", // Element types come in a future iteration
+  locked: l.isLocked,
   visible: l.isVisible,
 });
 
@@ -70,21 +69,21 @@ export default function EditorSidebar({ frameSize, setFrameSize }: EditorSidebar
   const handleToolClick = (toolId: string, toolName: string) => {
     setActiveTool(toolId);
 
-    if (["rect", "circle", "text", "image"].includes(toolId)) {
+    if (["rect", "text", "image"].includes(toolId)) {
       const tempId = Date.now().toString();
       const newLayer: LayerType = {
-        id:      tempId,
-        name:    `New ${toolName}`,
-        type:    toolId,
-        locked:  false,
+        id: tempId,
+        name: `New ${toolName}`,
+        type: toolId,
+        locked: false,
         visible: true,
-        active:  true,
+        active: true,
       };
 
       // Optimistic update
       setLayers(prev => {
-        const activeIndex  = prev.findIndex(l => l.active);
-        const insertIndex  = activeIndex >= 0 ? activeIndex : 0;
+        const activeIndex = prev.findIndex(l => l.active);
+        const insertIndex = activeIndex >= 0 ? activeIndex : 0;
         const updated = prev.map(l => ({ ...l, active: false }));
         updated.splice(insertIndex, 0, newLayer);
 
