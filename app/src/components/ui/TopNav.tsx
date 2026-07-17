@@ -1,57 +1,31 @@
-import { NavLink, Link } from 'react-router-dom';
-import ojIcon from '../../assets/logo/oj-icon.png';
+import { Link } from 'react-router-dom';
 
-
-interface TopNavProps {
-  className?: string;
-}
-
-export default function TopNav({ className }: TopNavProps) {
+export default function TopNav() {
   return (
-    <nav className={className || "top-nav flex items-center justify-content-between bg-gray-400 text-white p-4"}>
-      
-      <Link to="/" className="top-nav__logo w-10 h-10 ">
-        <img src={ojIcon} alt="OJ Logo" />
-        <span>svg-readme</span>
-      </Link>
-
-      <div className="top-nav__links">
-        <NavLink
-          to="/"
-          end
-          className={({ isActive }) => isActive ? 'active' : ''}
-        >
-          Home
-        </NavLink>
-        <NavLink
-          to="/about"
-          className={({ isActive }) => isActive ? 'active' : ''}
-        >
-          About
-        </NavLink>
-        <NavLink
-          to="/contact"
-          className={({ isActive }) => isActive ? 'active' : ''}
-        >
-          Contact
-        </NavLink>
-      </div>
-
-      <div className="top-nav__actions">
+    <nav className="border-b border-zinc-200 bg-white sticky top-0 z-50">
+      <div className="flex items-center justify-between py-[18px] px-6 max-w-[1180px] mx-auto">
+        <Link to="/" className="flex items-center gap-2 font-['Poppins'] font-semibold text-[17px] text-zinc-900 no-underline">
+          <span className="text-[#1b5def] font-mono font-medium">&lt;/&gt;</span> svg-readme
+        </Link>
+        <div className="flex gap-7 items-center">
+          <a href="#studio" className="text-sm text-zinc-500 hover:text-zinc-900 transition-colors no-underline">
+            Generator
+          </a>
+          <a href="#how" className="text-sm text-zinc-500 hover:text-zinc-900 transition-colors no-underline">
+            How it works
+          </a>
+          <Link to="/editor" className="text-sm text-[#1b5def] font-semibold hover:text-blue-700 transition-colors no-underline">
+            Full Editor →
+          </Link>
+        </div>
         <a
+          className="font-mono text-[13px] border border-zinc-900 px-3.5 py-2 text-zinc-900 hover:bg-zinc-900 hover:text-white transition-all whitespace-nowrap no-underline"
           href="https://github.com/Wenoxxxx/svg-readme"
           target="_blank"
           rel="noopener noreferrer"
-          className="btn btn-outline btn-sm"
         >
-          <svg width="13" height="13" viewBox="0 0 19 19" fill="currentColor">
-            <path fillRule="evenodd" d="M9.356 1.85C5.05 1.85 1.57 5.356 1.57 9.694a7.84 7.84 0 0 0 5.324 7.44c.387.079.528-.168.528-.376 0-.182-.013-.805-.013-1.454-2.165.467-2.616-.935-2.616-.935-.349-.91-.864-1.143-.864-1.143-.71-.48.051-.48.051-.48.787.051 1.2.805 1.2.805.695 1.194 1.817.857 2.268.649.064-.507.27-.857.49-1.052-1.728-.182-3.545-.857-3.545-3.87 0-.857.31-1.558.8-2.104-.078-.195-.349-1 .077-2.078 0 0 .657-.208 2.14.805a7.5 7.5 0 0 1 1.946-.26c.657 0 1.328.092 1.946.26 1.483-1.013 2.14-.805 2.14-.805.426 1.078.155 1.883.078 2.078.502.546.799 1.247.799 2.104 0 3.013-1.818 3.675-3.558 3.87.284.247.528.714.528 1.454 0 1.052-.012 1.896-.012 2.156 0 .208.142.455.528.377a7.84 7.84 0 0 0 5.324-7.441c.013-4.338-3.48-7.844-7.773-7.844" clipRule="evenodd"/>
-          </svg>
-          GitHub
+          GitHub ↗
         </a>
-        <Link to="/Editor" className="btn btn-primary btn-sm">
-          Open Editor →
-        </Link>
       </div>
     </nav>
   );
