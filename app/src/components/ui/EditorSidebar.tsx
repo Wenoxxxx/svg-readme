@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Type, Image as ImageIcon, Square, Circle, PenTool, LayoutGrid, MousePointer2 } from "lucide-react";
+import { Type, Image as ImageIcon, Square, Circle, PenTool, Maximize, MousePointer2 } from "lucide-react";
 import LayerPanel, { type LayerType } from "../editorSidebar/LayerPanel";
 import FramePanel, { type FrameSize } from "../editorSidebar/FramePanel";
 
@@ -14,7 +14,7 @@ const initialLayers: LayerType[] = [
 
 const tools = [
   { id: "select", icon: <MousePointer2 className="w-4 h-4" />, name: "Select" },
-  { id: "frame", icon: <LayoutGrid className="w-4 h-4" />, name: "Frame" },
+  { id: "frame", icon: <Maximize className="w-4 h-4" />, name: "Frame" },
   { id: "rect", icon: <Square className="w-4 h-4" />, name: "Rectangle" },
   { id: "circle", icon: <Circle className="w-4 h-4" />, name: "Circle" },
   { id: "text", icon: <Type className="w-4 h-4" />, name: "Text" },
@@ -83,7 +83,7 @@ export default function EditorSidebar({ frameSize, setFrameSize }: EditorSidebar
       {activeTool === 'frame' && (
         <FramePanel frameSize={frameSize} setFrameSize={setFrameSize} />
       )}
-      
+
       {/* Layers Section */}
       <LayerPanel layers={layers} setLayers={setLayers} />
     </aside>
