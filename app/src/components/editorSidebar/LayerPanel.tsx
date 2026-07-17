@@ -13,9 +13,30 @@ export type LayerType = {
 interface LayerPanelProps {
   layers: LayerType[];
   setLayers: React.Dispatch<React.SetStateAction<LayerType[]>>;
+  /** Called when the user clicks +, after optimistic UI update */
+  onAdd?: (layer: LayerType, insertIndex: number) => void;
+  /** Called after the layer list has been optimistically reordered */
+  onReorder?: (ordered: { id: string; orderIndex: number }[]) => void;
+  /** Called after a layer's name has been updated optimistically */
+  onRename?: (id: string, name: string) => void;
+  /** Called after visibility is toggled optimistically */
+  onToggleVisibility?: (id: string, visible: boolean) => void;
+  /** Called after lock is toggled optimistically */
+  onToggleLock?: (id: string, locked: boolean) => void;
+  /** Called after a layer is removed optimistically */
+  onDelete?: (id: string) => void;
 }
 
-export default function LayerPanel({ layers, setLayers }: LayerPanelProps) {
+export default function LayerPanel({
+  layers,
+  setLayers,
+  onAdd,
+  onReorder,
+  onRename,
+  onToggleVisibility,
+  onToggleLock,
+  onDelete,
+}: LayerPanelProps) {
   const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
   const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
@@ -47,6 +68,9 @@ export default function LayerPanel({ layers, setLayers }: LayerPanelProps) {
       const [draggedLayer] = newLayers.splice(draggedIndex, 1);
       newLayers.splice(dropIndex, 0, draggedLayer);
 
+      // Notify parent to persist new order
+      onReorder?.(newLayers.map((l, i) => ({ id: l.id, orderIndex: i })));
+
       return newLayers;
     });
 
@@ -59,12 +83,20 @@ export default function LayerPanel({ layers, setLayers }: LayerPanelProps) {
 
   const toggleVisibility = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    setLayers(prev => prev.map(l => l.id === id ? { ...l, visible: !l.visible } : l));
+    setLayers(prev => prev.map(l => {
+      if (l.id !== id) return l;
+      onToggleVisibility?.(id, !l.visible);
+      return { ...l, visible: !l.visible };
+    }));
   };
 
   const toggleLock = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    setLayers(prev => prev.map(l => l.id === id ? { ...l, locked: !l.locked } : l));
+    setLayers(prev => prev.map(l => {
+      if (l.id !== id) return l;
+      onToggleLock?.(id, !l.locked);
+      return { ...l, locked: !l.locked };
+    }));
   };
 
   const setActiveLayer = (id: string) => {
@@ -72,7 +104,7 @@ export default function LayerPanel({ layers, setLayers }: LayerPanelProps) {
   };
 
   const handleAddLayer = () => {
-    const newLayer = {
+    const newLayer: LayerType = {
       id: Date.now().toString(),
       name: "New Layer",
       type: "shape",
@@ -85,12 +117,14 @@ export default function LayerPanel({ layers, setLayers }: LayerPanelProps) {
       const insertIndex = activeIndex >= 0 ? activeIndex : 0;
       const newLayers = prev.map(l => ({ ...l, active: false }));
       newLayers.splice(insertIndex, 0, newLayer);
+      onAdd?.(newLayer, insertIndex);
       return newLayers;
     });
   };
 
   const handleDeleteLayer = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
+    onDelete?.(id);
     setLayers(prev => prev.filter(l => l.id !== id));
   };
 
@@ -102,7 +136,9 @@ export default function LayerPanel({ layers, setLayers }: LayerPanelProps) {
 
   const saveEditing = () => {
     if (editingLayerId) {
-      setLayers(prev => prev.map(l => l.id === editingLayerId ? { ...l, name: editingName.trim() || "Untitled Layer" } : l));
+      const newName = editingName.trim() || "Untitled Layer";
+      onRename?.(editingLayerId, newName);
+      setLayers(prev => prev.map(l => l.id === editingLayerId ? { ...l, name: newName } : l));
       setEditingLayerId(null);
     }
   };

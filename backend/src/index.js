@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const projectRoutes = require('./routes/projectRoutes');
+const layerRoutes = require('./routes/layerRoutes');
 const { errorHandler } = require('./middleware/errorMiddleware');
 
 const app = express();
@@ -16,6 +17,8 @@ app.get('/api/health', (req, res) => {
 
 // Mount Routes
 app.use('/api/projects', projectRoutes);
+// Layers are nested under a project: /api/projects/:projectId/layers
+app.use('/api/projects/:projectId/layers', layerRoutes);
 
 // Error Middleware
 app.use(errorHandler);
