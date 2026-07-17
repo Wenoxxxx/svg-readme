@@ -1,125 +1,93 @@
 # svg-readme
 
-Generate animated SVG banners for your GitHub profile README — built with React components rendered through [Satori](https://github.com/vercel/satori), with hand-injected CSS animations for effects Satori can't produce on its own (drifting grid backgrounds, morphing wave paths, staggered fade-ins).
+A full-stack web application for generating animated SVG banners for your GitHub profile README. This project provides a visual editor to design your banner, along with a backend to generate the final SVG — complete with hand-injected CSS animations for effects like drifting grid backgrounds, morphing wave paths, and staggered fade-ins.
 
 <p align="center">
-  <img src="./output/banner.svg" width="100%" alt="Banner preview" />
+  <img src="https://raw.githubusercontent.com/Wenoxxxxxx/svg-readme/main/output/banner.svg" width="100%" alt="Banner preview" />
 </p>
 
-## Why this exists
+## Overview
 
-GitHub strips `<script>` tags from anything rendered inline in a README, but an SVG referenced as an external image (`<img src="...">`) is served as a static asset and renders fully in the browser — CSS `@keyframes`, gradients, and all. `svg-readme` takes advantage of that: it builds a real animated SVG file once, commits it to the repo, and your profile README just points to it.
+GitHub strips `<script>` tags from anything rendered inline in a README, but an SVG referenced as an external image (`<img src="...">`) is served as a static asset and renders fully in the browser — CSS `@keyframes`, gradients, and all.
 
-## Features
+`svg-readme` has evolved from a CLI script into a comprehensive web-based platform:
+- **`app/`**: A React + Vite frontend (using Tailwind CSS v4) providing a rich, interactive canvas to visually design your banner.
+- **`backend/`**: An Express server designed to handle the generation of the customized SVGs.
 
-- **Component-based layout** — write the banner's structure as a React component; Satori converts JSX + flexbox CSS into SVG shapes
-- **CSS animations that survive as a static image** — fade-ins, a growing accent bar, a drifting grid background, and a morphing wave path, all driven by plain CSS `@keyframes` with no JavaScript required at render time
-- **Custom fonts** — Poppins and JetBrains Mono, loaded as local `.ttf` files and embedded directly so there's no dependency on external font requests
-- **One command to rebuild** — `npm run build` regenerates `output/banner.svg` from the component
-
-## Tech stack
+## Tech Stack
 
 | Layer | Tool |
 |---|---|
-| Layout engine | [Satori](https://github.com/vercel/satori) (JSX → SVG) |
-| Components | React + TypeScript |
-| Runtime | [tsx](https://github.com/privatenumber/tsx) |
-| Animation | Hand-written CSS, spliced into Satori's output |
+| **Frontend** | React, Vite, Tailwind CSS v4, React Router |
+| **Backend** | Express |
+| **Language** | TypeScript / JavaScript |
 
-## Getting started
+## Project Structure
 
-### 1. Clone and install
+```text
+svg-readme/
+├── .github/             # GitHub Actions & Templates
+├── app/                 # React frontend (Editor & Landing pages)
+│   ├── public/
+│   ├── src/
+│   │   ├── components/  # Reusable UI components
+│   │   ├── layouts/     # Page layouts
+│   │   ├── pages/       # Route pages (Home, Editor, etc.)
+│   │   └── App.tsx      # Main application routing
+│   └── package.json     # Frontend dependencies
+├── backend/             # Express backend (SVG generation engine)
+│   └── package.json     # Backend dependencies
+└── README.md
+```
+
+## Roadmap
+
+- [x] Initial CLI for SVG generation
+- [x] React + Vite frontend editor UI
+- [ ] Backend Express API for dynamic SVG rendering
+- [ ] User authentication and saved banners
+- [ ] More templates, fonts, and customizable themes
+- [ ] Export to PNG/JPEG format
+
+## Getting Started
+
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/Wenoxxxxxx/svg-readme.git
 cd svg-readme
-npm install
 ```
 
-### 2. Add fonts
+### 2. Run the Frontend
 
-Satori can't fetch fonts at runtime — download them and place the `.ttf` files here:
-
-```
-assets/fonts/Poppins-Medium.ttf
-assets/fonts/Poppins-Regular.ttf
-assets/fonts/JetBrainsMono-Medium.ttf
-```
-
-Get them from [Google Fonts: Poppins](https://fonts.google.com/specimen/Poppins) and [Google Fonts: JetBrains Mono](https://fonts.google.com/specimen/JetBrains+Mono).
-
-### 3. Build the banner
+Navigate to the `app` directory to launch the web editor:
 
 ```bash
-npm run build
+cd app
+npm install
+npm run dev
 ```
 
-This writes the finished SVG to `output/banner.svg`. Open it directly in a browser tab to preview the animation.
+### 3. Run the Backend
 
-### 4. Use it in your profile README
+Navigate to the `backend` directory to run the API:
 
-Reference the raw file from your `<username>/<username>` profile repo:
+```bash
+cd backend
+npm install
+# Note: Ensure you have an entry point like index.js configured
+node index.js 
+```
+
+## Customization & Usage
+
+1. Open the **Editor** in the web app to visually adjust the dimensions, content, and styling of your profile banner.
+2. The UI communicates with the backend to generate a real, animated SVG file.
+3. Reference the raw SVG file from your `<username>/<username>` profile repository:
 
 ```md
 <img src="https://raw.githubusercontent.com/Wenoxxxxxx/svg-readme/main/output/banner.svg" width="100%" alt="Owen Jerusalem banner" />
 ```
-
-## Project structure
-
-```
-svg-readme/
-├── app/
-│   ├── public/
-│   │   ├── favicon.svg
-│   │   └── icons.svg
-│   ├── src/
-│   │   ├── assets/
-│   │   │   ├── hero.png
-│   │   │   ├── react.svg
-│   │   │   └── vite.svg
-│   │   ├── App.css
-│   │   ├── App.tsx
-│   │   ├── index.css
-│   │   └── main.tsx]
-│   ├── .gitignore
-│   ├── README.md
-│   ├── eslint.config.js
-│   ├── index.html
-│   ├── package-lock.json
-│   ├── package.json
-│   ├── tsconfig.app.json
-│   ├── tsconfig.json
-│   ├── tsconfig.node.json
-│   └── vite.config.ts
-├── backend/
-│   ├── .gitignore
-│   ├── package-lock.json
-│   └── package.json
-├── .gitignore
-└── README.md
-```
-
-## How it works
-
-1. **`Banner.tsx`** describes the static layout — position, sizing, text, borders — using flexbox-style CSS-in-JS. Satori converts this into raw SVG shapes (`<rect>`, `<text>`, etc).
-2. **`build-svg.tsx`** takes Satori's output and splices in what Satori can't generate on its own:
-   - A `<style>` block with `@keyframes` for fade-ins, the growing accent bar, and the badge
-   - A hand-written animated grid background, tiled and clipped so it drifts seamlessly on loop
-   - A hand-written wave `<path>` that morphs shape via CSS's `d` property
-3. Since Satori strips `className` from its output, animations that need to target specific elements use structural CSS selectors (`text:nth-of-type(1)`, `rect[width="8"]`) instead of classes.
-
-## Customization
-
-Edit the constants at the top of `src/build-svg.tsx`:
-
-```ts
-const NAME = "Owen Jerusalem";
-const SUBTITLE = "IT STUDENT | BUKSU";
-const PRIMARY = "#1b5def";
-const AVATAR_URL = "https://github.com/Wenoxxxxxx.png?size=200";
-```
-
-Then run `npm run build` again to regenerate.
 
 ## License
 
@@ -127,4 +95,4 @@ MIT
 
 ## Author
 
-**Owen Jerusalem** — [portfolio](https://owen-jerusalem.vercel.app) · [GitHub](https://github.com/Wenoxxxxxx)
+**Owen Jerusalem** — [portfolio](https://owen-jerusalem.vercel.app) · [GitHub](https://github.com/Wenoxxxx)

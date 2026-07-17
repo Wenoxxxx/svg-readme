@@ -1,19 +1,20 @@
 import { useState } from "react";
-import { Type, Image as ImageIcon, Square, Circle, PenTool, LayoutGrid, MousePointer2 } from "lucide-react";
+import { Type, Image as ImageIcon, Square, Circle, PenTool, Maximize, MousePointer2 } from "lucide-react";
 import LayerPanel, { type LayerType } from "../editorSidebar/LayerPanel";
+import FramePanel, { type FrameSize } from "../editorSidebar/FramePanel";
 
 const initialLayers: LayerType[] = [
-  { id: "1", name: "Background", type: "shape", locked: true, visible: true },
-  { id: "2", name: "Avatar Ring", type: "circle", locked: false, visible: true },
-  { id: "3", name: "Hero Image", type: "image", locked: false, visible: true },
   { id: "4", name: "Main Title", type: "text", locked: false, visible: true, active: true },
   { id: "5", name: "Subtitle", type: "text", locked: false, visible: true },
+  { id: "2", name: "Avatar Ring", type: "circle", locked: false, visible: true },
+  { id: "3", name: "Hero Image", type: "image", locked: false, visible: true },
   { id: "6", name: "Decorative Dots", type: "group", locked: false, visible: false },
+  { id: "1", name: "Background", type: "shape", locked: true, visible: true },
 ];
 
 const tools = [
   { id: "select", icon: <MousePointer2 className="w-4 h-4" />, name: "Select" },
-  { id: "frame", icon: <LayoutGrid className="w-4 h-4" />, name: "Frame" },
+  { id: "frame", icon: <Maximize className="w-4 h-4" />, name: "Frame" },
   { id: "rect", icon: <Square className="w-4 h-4" />, name: "Rectangle" },
   { id: "circle", icon: <Circle className="w-4 h-4" />, name: "Circle" },
   { id: "text", icon: <Type className="w-4 h-4" />, name: "Text" },
@@ -21,7 +22,12 @@ const tools = [
   { id: "image", icon: <ImageIcon className="w-4 h-4" />, name: "Image" },
 ];
 
-export default function EditorSidebar() {
+interface EditorSidebarProps {
+  frameSize: FrameSize;
+  setFrameSize: (size: FrameSize) => void;
+}
+
+export default function EditorSidebar({ frameSize, setFrameSize }: EditorSidebarProps) {
   const [layers, setLayers] = useState<LayerType[]>(initialLayers);
   const [activeTool, setActiveTool] = useState("select");
 
@@ -39,7 +45,13 @@ export default function EditorSidebar() {
         active: true
       };
 
-      setLayers(prev => [newLayer, ...prev.map(l => ({ ...l, active: false }))]);
+      setLayers(prev => {
+        const activeIndex = prev.findIndex(l => l.active);
+        const insertIndex = activeIndex >= 0 ? activeIndex : 0;
+        const newLayers = prev.map(l => ({ ...l, active: false }));
+        newLayers.splice(insertIndex, 0, newLayer);
+        return newLayers;
+      });
 
       // Revert back to select tool after adding
       setTimeout(() => setActiveTool("select"), 100);
@@ -66,6 +78,11 @@ export default function EditorSidebar() {
           ))}
         </div>
       </div>
+
+      {/* Conditional Panels */}
+      {activeTool === 'frame' && (
+        <FramePanel frameSize={frameSize} setFrameSize={setFrameSize} />
+      )}
 
       {/* Layers Section */}
       <LayerPanel layers={layers} setLayers={setLayers} />
