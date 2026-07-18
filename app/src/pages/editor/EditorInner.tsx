@@ -1,11 +1,30 @@
 import { useEffect, useCallback, useRef, useState } from "react";
 import EditorLayout from "../../layouts/EditorLayout";
 import { useEditor } from "../../context/EditorContext";
-import type { EditorTool } from "../../context/EditorContext";
+import type { EditorTool, LayerType } from "../../context/EditorContext";
 import Canvas from "../../components/editor-canvas/Canvas";
 import type { TextElementProperties } from "../../components/editor-canvas/ElementsRenderer";
 import { createLayer } from "../../lib/api";
 import { buildSvgString, downloadSvg, copySvgText, copyMarkdown } from "../../lib/export";
+
+// ── Types for clipboard and undo history ───────────────────────────────────
+
+interface ClipboardState {
+  layers: LayerType[];
+  elementProperties: Record<string, TextElementProperties>;
+}
+
+interface HistoryAction {
+  type: 'CREATE' | 'DELETE' | 'MOVE' | 'UPDATE' | 'PASTE';
+  layers: LayerType[];
+  elementProperties: Record<string, TextElementProperties>;
+  selectedLayerIds: string[];
+}
+
+interface HistoryState {
+  past: HistoryAction[];
+  future: HistoryAction[]; // For redo support
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -45,6 +64,12 @@ export function EditorInner() {
   const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState("");
 
+  // Clipboard state for copy/paste
+  const [clipboard, setClipboard] = useState<ClipboardState | null>(null);
+
+  // Undo/Redo history state
+  const [history, setHistory] = useState<HistoryState>({ past: [], future: [] });
+
   // Ref to track if we're editing text for keyboard shortcut guard
   const isEditingRef = useRef(false);
   isEditingRef.current = isEditingText;
@@ -52,6 +77,147 @@ export function EditorInner() {
   // Ref for export data to avoid re-registering event listeners on every render
   const exportDataRef = useRef({ frameSize, elementProperties, layers });
   exportDataRef.current = { frameSize, elementProperties, layers };
+
+  // ── Save current state to history ──────────────────────────────────────
+  const saveToHistory = useCallback((actionType: HistoryAction['type']) => {
+    // Save current state to history before making changes
+    setHistory((prevHistory) => {
+      const newAction: HistoryAction = {
+        type: actionType,
+        layers: [...layers],
+        elementProperties: { ...elementProperties },
+        selectedLayerIds: [...selectedLayerIds]
+      };
+      
+      return {
+        past: [...prevHistory.past, newAction],
+        future: [] // Clear future when new action is performed
+      };
+    });
+  }, [layers, elementProperties, selectedLayerIds]);
+
+  // ── Delete selected layers function ────────────────────────────────────
+  const handleDeleteSelectedLayers = useCallback(() => {
+    // Don't delete if no layers are selected
+    if (selectedLayerIds.length === 0) return;
+    
+    // Don't delete if any selected layer is locked
+    const hasLockedLayers = selectedLayerIds.some(id => {
+      const layer = layers.find(l => l.id === id);
+      return layer?.locked;
+    });
+    if (hasLockedLayers) return;
+    
+    // Save current state to history before deletion
+    saveToHistory('DELETE');
+    
+    // Delete selected layers
+    setLayers((prev) => prev.filter(l => !selectedLayerIds.includes(l.id)));
+    
+    // Clean up element properties for deleted layers
+    setElementProperties((prev) => {
+      const next = { ...prev };
+      selectedLayerIds.forEach(id => delete next[id]);
+      return next;
+    });
+    
+    // Clear selection
+    setSelectedLayerId(null);
+    setSelectedLayerIds([]);
+  }, [selectedLayerIds, layers, setLayers, setElementProperties, setSelectedLayerId, setSelectedLayerIds, saveToHistory]);
+
+  // ── Copy selected layers to clipboard ───────────────────────────────────
+  const handleCopy = useCallback(() => {
+    // Don't copy if no layers are selected
+    if (selectedLayerIds.length === 0) return;
+    
+    // Copy selected layers and their properties
+    const copiedLayers = layers.filter(layer => selectedLayerIds.includes(layer.id));
+    const copiedElementProperties: Record<string, TextElementProperties> = {};
+    selectedLayerIds.forEach(id => {
+      if (elementProperties[id]) {
+        copiedElementProperties[id] = { ...elementProperties[id] };
+      }
+    });
+    
+    setClipboard({
+      layers: copiedLayers,
+      elementProperties: copiedElementProperties
+    });
+  }, [selectedLayerIds, layers, elementProperties]);
+
+  // ── Paste from clipboard ───────────────────────────────────────────────────
+  const PASTE_OFFSET = 20; // Offset to avoid pasting on top of original
+  
+  const handlePaste = useCallback(() => {
+    // Don't paste if clipboard is empty
+    if (!clipboard || clipboard.layers.length === 0) return;
+    
+    const newLayers: LayerType[] = [];
+    const newElementProperties: Record<string, TextElementProperties> = {};
+    const newSelectedLayerIds: string[] = [];
+    
+    // Create new IDs and offset positions for each pasted layer
+    clipboard.layers.forEach(copiedLayer => {
+      const newId = `${copiedLayer.id}-copy-${Date.now()}`;
+      newLayers.push({
+        ...copiedLayer,
+        id: newId,
+        active: true
+      });
+      
+      if (clipboard.elementProperties[copiedLayer.id]) {
+        const originalProps = clipboard.elementProperties[copiedLayer.id];
+        newElementProperties[newId] = {
+          ...originalProps,
+          // Offset position
+          x: (originalProps.x as number) + PASTE_OFFSET,
+          y: (originalProps.y as number) + PASTE_OFFSET
+        };
+      }
+      
+      newSelectedLayerIds.push(newId);
+    });
+    
+    // Save current state to history before pasting
+    saveToHistory('PASTE');
+    
+    // Add new layers to existing layers
+    setLayers((prev) => [...prev, ...newLayers]);
+    
+    // Add new element properties
+    setElementProperties((prev) => ({
+      ...prev,
+      ...newElementProperties
+    }));
+    
+    // Select the pasted layers
+    setSelectedLayerIds(newSelectedLayerIds);
+    setSelectedLayerId(newSelectedLayerIds[0] ?? null);
+  }, [clipboard, saveToHistory, setLayers, setElementProperties, setSelectedLayerIds, setSelectedLayerId]);
+
+  // ── Undo last action ─────────────────────────────────────────────────────
+  const handleUndo = useCallback(() => {
+    // Don't undo if history is empty
+    if (history.past.length === 0) return;
+    
+    // Get the most recent action to undo
+    const actionToUndo = history.past[history.past.length - 1];
+    const newPast = history.past.slice(0, -1);
+    const newFuture = [...history.future, actionToUndo];
+    
+    // Restore state from the action
+    setLayers(actionToUndo.layers);
+    setElementProperties(actionToUndo.elementProperties);
+    setSelectedLayerIds(actionToUndo.selectedLayerIds);
+    setSelectedLayerId(actionToUndo.selectedLayerIds[0] ?? null);
+    
+    // Update history
+    setHistory({
+      past: newPast,
+      future: newFuture
+    });
+  }, [history, setLayers, setElementProperties, setSelectedLayerIds, setSelectedLayerId, setHistory]);
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useEffect(() => {
@@ -65,28 +231,55 @@ export function EditorInner() {
         return;
       }
 
+      // Check for Ctrl/Cmd + key combinations
+      const isCtrlPressed = e.ctrlKey || e.metaKey;
+      
       switch (e.key) {
         case "v":
         case "V":
-          e.preventDefault();
-          setActiveTool("move");
+          if (isCtrlPressed) {
+            e.preventDefault();
+            handlePaste();
+          } else {
+            e.preventDefault();
+            setActiveTool("move");
+          }
+          break;
+        case "c":
+        case "C":
+          if (isCtrlPressed) {
+            e.preventDefault();
+            handleCopy();
+          }
           break;
         case "t":
         case "T":
           e.preventDefault();
           setActiveTool("text");
           break;
+        case "z":
+        case "Z":
+          if (isCtrlPressed) {
+            e.preventDefault();
+            handleUndo();
+          }
+          break;
         case "Escape":
           if (selectedLayerId) {
             setSelectedLayerId(null);
           }
+          break;
+        case "Backspace":
+        case "Delete":
+          e.preventDefault();
+          handleDeleteSelectedLayers();
           break;
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedLayerId]);
+  }, [selectedLayerId, handleCopy, handlePaste, handleUndo, handleDeleteSelectedLayers]);
 
   // ── Create text element ──────────────────────────────────────────────────
   const handleCreateText = useCallback(
