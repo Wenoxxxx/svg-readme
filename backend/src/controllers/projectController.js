@@ -1,4 +1,4 @@
-const prisma = require('../config/db');
+const prisma = require("../config/db");
 
 // @desc    Get all projects
 // @route   GET /api/projects
@@ -8,10 +8,10 @@ const getProjects = async (req, res, next) => {
       include: {
         layers: {
           include: {
-            elements: true
-          }
-        }
-      }
+            elements: true,
+          },
+        },
+      },
     });
     res.json(projects);
   } catch (error) {
@@ -20,5 +20,5 @@ const getProjects = async (req, res, next) => {
 };
 
 module.exports = {
-  getProjects
+  getProjects,
 };

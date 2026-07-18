@@ -1,20 +1,35 @@
-import { Link } from 'react-router-dom';
+import { Link } from "react-router-dom";
 
 export default function TopNav() {
   return (
     <nav className="border-b border-zinc-200 bg-white sticky top-0 z-50">
       <div className="flex items-center justify-between py-[18px] px-6 max-w-[1180px] mx-auto">
-        <Link to="/" className="flex items-center gap-2 font-['Poppins'] font-semibold text-[17px] text-zinc-900 no-underline">
-          <span className="text-[#1b5def] font-mono font-medium">&lt;/&gt;</span> svg-readme
+        <Link
+          to="/"
+          className="flex items-center gap-2 font-['Poppins'] font-semibold text-[17px] text-zinc-900 no-underline"
+        >
+          <span className="text-[#1b5def] font-mono font-medium">
+            &lt;/&gt;
+          </span>{" "}
+          svg-readme
         </Link>
         <div className="flex gap-7 items-center">
-          <a href="#studio" className="text-sm text-zinc-500 hover:text-zinc-900 transition-colors no-underline">
+          <a
+            href="#studio"
+            className="text-sm text-zinc-500 hover:text-zinc-900 transition-colors no-underline"
+          >
             Generator
           </a>
-          <a href="#how" className="text-sm text-zinc-500 hover:text-zinc-900 transition-colors no-underline">
+          <a
+            href="#how"
+            className="text-sm text-zinc-500 hover:text-zinc-900 transition-colors no-underline"
+          >
             How it works
           </a>
-          <Link to="/editor" className="text-sm text-[#1b5def] font-semibold hover:text-blue-700 transition-colors no-underline">
+          <Link
+            to="/editor"
+            className="text-sm text-[#1b5def] font-semibold hover:text-blue-700 transition-colors no-underline"
+          >
             Full Editor →
           </Link>
         </div>

@@ -19,8 +19,8 @@ export default function App() {
           <Route path="/contacts" element={<Contacts />} />
         </Route>
 
-          <Route path="/editor" element={<Editor />} />
-      </Routes>      
+        <Route path="/editor" element={<Editor />} />
+      </Routes>
     </Router>
   );
 }

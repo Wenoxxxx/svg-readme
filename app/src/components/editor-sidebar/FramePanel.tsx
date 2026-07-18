@@ -11,12 +11,30 @@ interface FramePanelProps {
 }
 
 const PRESETS = [
-  { name: "Banner", width: 700, height: 350, icon: <Monitor className="w-3.5 h-3.5" /> },
-  { name: "Square", width: 500, height: 500, icon: <Tablet className="w-3.5 h-3.5" /> },
-  { name: "Mobile", width: 390, height: 844, icon: <Smartphone className="w-3.5 h-3.5" /> },
+  {
+    name: "Banner",
+    width: 700,
+    height: 350,
+    icon: <Monitor className="w-3.5 h-3.5" />,
+  },
+  {
+    name: "Square",
+    width: 500,
+    height: 500,
+    icon: <Tablet className="w-3.5 h-3.5" />,
+  },
+  {
+    name: "Mobile",
+    width: 390,
+    height: 844,
+    icon: <Smartphone className="w-3.5 h-3.5" />,
+  },
 ];
 
-export default function FramePanel({ frameSize, setFrameSize }: FramePanelProps) {
+export default function FramePanel({
+  frameSize,
+  setFrameSize,
+}: FramePanelProps) {
   const handleWidthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = parseInt(e.target.value) || 0;
     setFrameSize({ ...frameSize, width: val });
@@ -39,7 +57,9 @@ export default function FramePanel({ frameSize, setFrameSize }: FramePanelProps)
       <div className="px-4 pb-4 flex flex-col gap-3">
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] text-zinc-500 font-mono uppercase">Width</label>
+            <label className="text-[10px] text-zinc-500 font-mono uppercase">
+              Width
+            </label>
             <div className="flex items-center gap-2 bg-black/20 border border-white/5 rounded-md px-2 py-1.5 focus-within:border-blue-500/50 transition-colors">
               <span className="text-zinc-500 text-xs font-mono">W</span>
               <input
@@ -51,7 +71,9 @@ export default function FramePanel({ frameSize, setFrameSize }: FramePanelProps)
             </div>
           </div>
           <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] text-zinc-500 font-mono uppercase">Height</label>
+            <label className="text-[10px] text-zinc-500 font-mono uppercase">
+              Height
+            </label>
             <div className="flex items-center gap-2 bg-black/20 border border-white/5 rounded-md px-2 py-1.5 focus-within:border-blue-500/50 transition-colors">
               <span className="text-zinc-500 text-xs font-mono">H</span>
               <input
@@ -65,17 +87,23 @@ export default function FramePanel({ frameSize, setFrameSize }: FramePanelProps)
         </div>
 
         <div className="flex flex-col gap-1.5 mt-1">
-          <label className="text-[10px] text-zinc-500 font-mono uppercase mb-0.5">Presets</label>
+          <label className="text-[10px] text-zinc-500 font-mono uppercase mb-0.5">
+            Presets
+          </label>
           <div className="grid grid-cols-3 gap-2">
             {PRESETS.map((preset) => (
               <button
                 key={preset.name}
-                onClick={() => setFrameSize({ width: preset.width, height: preset.height })}
+                onClick={() =>
+                  setFrameSize({ width: preset.width, height: preset.height })
+                }
                 className="flex flex-col items-center justify-center gap-1.5 p-2 rounded-md bg-white/5 hover:bg-white/10 border border-transparent hover:border-white/10 text-zinc-400 hover:text-zinc-200 transition-all group"
                 title={`${preset.width}x${preset.height}`}
               >
                 {preset.icon}
-                <span className="text-[9px] font-medium truncate w-full text-center group-hover:text-zinc-100">{preset.name}</span>
+                <span className="text-[9px] font-medium truncate w-full text-center group-hover:text-zinc-100">
+                  {preset.name}
+                </span>
               </button>
             ))}
           </div>

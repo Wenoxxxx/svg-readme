@@ -1,151 +1,153 @@
 @import "tailwindcss";
 
 :root {
-    /* Surfaces */
-    --background:           #ffffff;
-    --foreground:           #191818;
-    --card:                 #ffffff;
-    --card-foreground:      #191818;
-    --popover:              #ffffff;
-    --popover-foreground:   #191818;
+  /* Surfaces */
+  --background: #ffffff;
+  --foreground: #191818;
+  --card: #ffffff;
+  --card-foreground: #191818;
+  --popover: #ffffff;
+  --popover-foreground: #191818;
 
-    /* Brand blue */
-    --primary:              #1b5def;
-    --primary-foreground:   #ffffff;
+  /* Brand blue */
+  --primary: #1b5def;
+  --primary-foreground: #ffffff;
 
-    /* Light-grey secondary surface */
-    --secondary:            #f4f4f4;
-    --secondary-foreground: #191818;
+  /* Light-grey secondary surface */
+  --secondary: #f4f4f4;
+  --secondary-foreground: #191818;
 
-    /* Muted / disabled */
-    --muted:                #f4f4f4;
-    --muted-foreground:     #6b7280;
+  /* Muted / disabled */
+  --muted: #f4f4f4;
+  --muted-foreground: #6b7280;
 
-    /* Accent (used for hover chips, badges) — soft blue tint */
-    --accent:               #e8effd;
-    --accent-foreground:    #1b5def;
+  /* Accent (used for hover chips, badges) — soft blue tint */
+  --accent: #e8effd;
+  --accent-foreground: #1b5def;
 
-    /* Danger */
-    --destructive:          oklch(0.577 0.245 27.325);
+  /* Danger */
+  --destructive: oklch(0.577 0.245 27.325);
 
-    /* Borders & inputs */
-    --border:               #e2e8f0;
-    --input:                #e2e8f0;
-    --ring:                 #1b5def;
+  /* Borders & inputs */
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #1b5def;
 
-    /* Chart palette — shades of blue + complementary */
-    --chart-1:              #1b5def;
-    --chart-2:              #3b82f6;
-    --chart-3:              #60a5fa;
-    --chart-4:              #93c5fd;
-    --chart-5:              #bfdbfe;
+  /* Chart palette — shades of blue + complementary */
+  --chart-1: #1b5def;
+  --chart-2: #3b82f6;
+  --chart-3: #60a5fa;
+  --chart-4: #93c5fd;
+  --chart-5: #bfdbfe;
 
-    --radius: 0;
+  --radius: 0;
 
-    /* Sidebar — white with blue active state */
-    --sidebar:                      #ffffff;
-    --sidebar-foreground:           #191818;
-    --sidebar-primary:              #1b5def;
-    --sidebar-primary-foreground:   #ffffff;
-    --sidebar-accent:               #e8effd;
-    --sidebar-accent-foreground:    #1b5def;
-    --sidebar-border:               #e2e8f0;
-    --sidebar-ring:                 #1b5def;
+  /* Sidebar — white with blue active state */
+  --sidebar: #ffffff;
+  --sidebar-foreground: #191818;
+  --sidebar-primary: #1b5def;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e8effd;
+  --sidebar-accent-foreground: #1b5def;
+  --sidebar-border: #e2e8f0;
+  --sidebar-ring: #1b5def;
 }
 
 .dark {
-    --background:           #0f1117;
-    --foreground:           #f4f4f4;
-    --card:                 #1a1d27;
-    --card-foreground:      #f4f4f4;
-    --popover:              #1a1d27;
-    --popover-foreground:   #f4f4f4;
-    --primary:              #3b82f6;
-    --primary-foreground:   #ffffff;
-    --secondary:            #1e2330;
-    --secondary-foreground: #f4f4f4;
-    --muted:                #1e2330;
-    --muted-foreground:     #9ca3af;
-    --accent:               #1e3a8a;
-    --accent-foreground:    #bfdbfe;
-    --destructive:          oklch(0.704 0.191 22.216);
-    --border:               rgba(255,255,255,0.08);
-    --input:                rgba(255,255,255,0.10);
-    --ring:                 #3b82f6;
-    --chart-1:              #3b82f6;
-    --chart-2:              #60a5fa;
-    --chart-3:              #93c5fd;
-    --chart-4:              #1b5def;
-    --chart-5:              #1e3a8a;
-    --sidebar:              #1a1d27;
-    --sidebar-foreground:   #f4f4f4;
-    --sidebar-primary:      #3b82f6;
-    --sidebar-primary-foreground: #ffffff;
-    --sidebar-accent:       #1e3a8a;
-    --sidebar-accent-foreground: #bfdbfe;
-    --sidebar-border:       rgba(255,255,255,0.08);
-    --sidebar-ring:         #3b82f6;
+  --background: #0f1117;
+  --foreground: #f4f4f4;
+  --card: #1a1d27;
+  --card-foreground: #f4f4f4;
+  --popover: #1a1d27;
+  --popover-foreground: #f4f4f4;
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
+  --secondary: #1e2330;
+  --secondary-foreground: #f4f4f4;
+  --muted: #1e2330;
+  --muted-foreground: #9ca3af;
+  --accent: #1e3a8a;
+  --accent-foreground: #bfdbfe;
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.1);
+  --ring: #3b82f6;
+  --chart-1: #3b82f6;
+  --chart-2: #60a5fa;
+  --chart-3: #93c5fd;
+  --chart-4: #1b5def;
+  --chart-5: #1e3a8a;
+  --sidebar: #1a1d27;
+  --sidebar-foreground: #f4f4f4;
+  --sidebar-primary: #3b82f6;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1e3a8a;
+  --sidebar-accent-foreground: #bfdbfe;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #3b82f6;
 }
 
-
 @font-face {
-  font-family: 'Poppins';
-  src: url('./assets/fonts/Poppins/Poppins-Regular.ttf') format('truetype');
+  font-family: "Poppins";
+  src: url("./assets/fonts/poppins/regular.ttf") format("truetype");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Poppins';
-  src: url('./assets/fonts/Poppins/Poppins-Medium.ttf') format('truetype');
+  font-family: "Poppins";
+  src: url("./assets/fonts/poppins/medium.ttf") format("truetype");
   font-weight: 500;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Poppins';
-  src: url('./assets/fonts/Poppins/Poppins-SemiBold.ttf') format('truetype');
+  font-family: "Poppins";
+  src: url("./assets/fonts/poppins/semi-bold.ttf") format("truetype");
   font-weight: 600;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Poppins';
-  src: url('./assets/fonts/Poppins/Poppins-Bold.ttf') format('truetype');
+  font-family: "Poppins";
+  src: url("./assets/fonts/poppins/bold.ttf") format("truetype");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'JetBrains Mono';
-  src: url('./assets/fonts/JetBrains_Mono/static/JetBrainsMono-Regular.ttf') format('truetype');
+  font-family: "JetBrains Mono";
+  src: url("./assets/fonts/jetbrains-mono/static/regular.ttf")
+    format("truetype");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'JetBrains Mono';
-  src: url('./assets/fonts/JetBrains_Mono/static/JetBrainsMono-Medium.ttf') format('truetype');
+  font-family: "JetBrains Mono";
+  src: url("./assets/fonts/jetbrains-mono/static/medium.ttf") format("truetype");
   font-weight: 500;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'JetBrains Mono';
-  src: url('./assets/fonts/JetBrains_Mono/static/JetBrainsMono-Bold.ttf') format('truetype');
+  font-family: "JetBrains Mono";
+  src: url("./assets/fonts/jetbrains-mono/static/bold.ttf") format("truetype");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
 }
 
 /* ─── Base reset ─────────────────────────────────────────── */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   border-radius: 0 !important;
 }
 
