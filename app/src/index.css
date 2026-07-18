@@ -90,7 +90,7 @@
 
 @font-face {
   font-family: 'Poppins';
-  src: url('./assets/fonts/Poppins/Poppins-Regular.ttf') format('truetype');
+  src: url('./assets/fonts/poppins/regular.ttf') format('truetype');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -98,7 +98,7 @@
 
 @font-face {
   font-family: 'Poppins';
-  src: url('./assets/fonts/Poppins/Poppins-Medium.ttf') format('truetype');
+  src: url('./assets/fonts/poppins/medium.ttf') format('truetype');
   font-weight: 500;
   font-style: normal;
   font-display: swap;
@@ -106,7 +106,7 @@
 
 @font-face {
   font-family: 'Poppins';
-  src: url('./assets/fonts/Poppins/Poppins-SemiBold.ttf') format('truetype');
+  src: url('./assets/fonts/poppins/semi-bold.ttf') format('truetype');
   font-weight: 600;
   font-style: normal;
   font-display: swap;
@@ -114,7 +114,7 @@
 
 @font-face {
   font-family: 'Poppins';
-  src: url('./assets/fonts/Poppins/Poppins-Bold.ttf') format('truetype');
+  src: url('./assets/fonts/poppins/bold.ttf') format('truetype');
   font-weight: 700;
   font-style: normal;
   font-display: swap;
@@ -122,7 +122,7 @@
 
 @font-face {
   font-family: 'JetBrains Mono';
-  src: url('./assets/fonts/JetBrains_Mono/static/JetBrainsMono-Regular.ttf') format('truetype');
+  src: url('./assets/fonts/jetbrains-mono/static/regular.ttf') format('truetype');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -130,7 +130,7 @@
 
 @font-face {
   font-family: 'JetBrains Mono';
-  src: url('./assets/fonts/JetBrains_Mono/static/JetBrainsMono-Medium.ttf') format('truetype');
+  src: url('./assets/fonts/jetbrains-mono/static/medium.ttf') format('truetype');
   font-weight: 500;
   font-style: normal;
   font-display: swap;
@@ -138,7 +138,7 @@
 
 @font-face {
   font-family: 'JetBrains Mono';
-  src: url('./assets/fonts/JetBrains_Mono/static/JetBrainsMono-Bold.ttf') format('truetype');
+  src: url('./assets/fonts/jetbrains-mono/static/bold.ttf') format('truetype');
   font-weight: 700;
   font-style: normal;
   font-display: swap;

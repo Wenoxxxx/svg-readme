@@ -2,21 +2,24 @@ import type { ReactNode } from "react";
 import EditorTopNav from "../components/ui/EditorTopNav";
 import EditorSidebar from "../components/ui/EditorSidebar";
 import EditorRightBar from "../components/ui/EditorRightBar";
-import { type FrameSize } from "../components/editorSidebar/FramePanel";
+import type { EditorTool } from "../context/EditorContext";
+import { type FrameSize } from "../components/editor-sidebar/FramePanel";
 
 interface EditorLayoutProps {
   children: ReactNode;
   frameSize: FrameSize;
   setFrameSize: (size: FrameSize) => void;
+  onToolSelect?: (tool: EditorTool) => void;
+  onExport?: () => void;
 }
 
-export default function EditorLayout({ children, frameSize, setFrameSize }: EditorLayoutProps) {
+export default function EditorLayout({ children, frameSize, setFrameSize, onToolSelect, onExport }: EditorLayoutProps) {
   return (
     <div className="h-screen w-screen flex flex-col bg-[#09090b] text-zinc-100 font-[Poppins] selection:bg-blue-500/30 selection:text-white">
-      <EditorTopNav />
+      <EditorTopNav onToolSelect={onToolSelect} onExport={onExport} />
 
       <div className="flex flex-1 overflow-hidden relative">
-        <EditorSidebar frameSize={frameSize} setFrameSize={setFrameSize} />
+        <EditorSidebar frameSize={frameSize} setFrameSize={setFrameSize} onToolSelect={onToolSelect} />
 
         <main className="flex-1 overflow-auto flex items-center justify-center bg-zinc-950/50 relative shadow-[inset_0_0_100px_rgba(0,0,0,0.5)]">
           {/* Subtle grid pattern for the canvas background */}
@@ -27,7 +30,7 @@ export default function EditorLayout({ children, frameSize, setFrameSize }: Edit
           {children}
         </main>
 
-        <EditorRightBar />
+        <EditorRightBar onExport={onExport} />
       </div>
     </div>
   );

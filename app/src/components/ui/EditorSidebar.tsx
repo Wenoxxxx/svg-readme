@@ -1,7 +1,10 @@
-import { useState, useEffect } from "react";
-import { Type, Image as ImageIcon, Square, Circle, PenTool, Maximize, MousePointer2 } from "lucide-react";
-import LayerPanel, { type LayerType } from "../editorSidebar/LayerPanel";
-import FramePanel, { type FrameSize } from "../editorSidebar/FramePanel";
+import { useEffect } from "react";
+import { Type, Image as ImageIcon, Square, PenTool, Maximize, MousePointer2 } from "lucide-react";
+import LayerPanel from "../editor-sidebar/LayerPanel";
+import type { LayerType } from "../editor-sidebar/LayerPanel";
+import FramePanel from "../editor-sidebar/FramePanel";
+import type { FrameSize } from "../editor-sidebar/FramePanel";
+import { useEditor, type EditorTool } from "../../context/EditorContext";
 import {
   getLayers,
   createLayer,
@@ -13,17 +16,12 @@ import {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-/**
- * Temporary project ID used until proper project/auth flow is implemented.
- * Replace this with a value coming from routing (e.g. useParams) or context
- * once the project creation endpoint is wired to the UI.
- */
 const TEMP_PROJECT_ID = "00000000-0000-0000-0000-000000000001";
 
 const fallbackLayers: LayerType[] = [];
 
-const tools = [
-  { id: "select", icon: <MousePointer2 className="w-4 h-4" />, name: "Select" },
+const toolList: { id: string; icon: React.ReactNode; name: string }[] = [
+  { id: "move", icon: <MousePointer2 className="w-4 h-4" />, name: "Move" },
   { id: "pen", icon: <PenTool className="w-4 h-4" />, name: "Pen" },
   { id: "frame", icon: <Maximize className="w-4 h-4" />, name: "Frame" },
   { id: "rect", icon: <Square className="w-4 h-4" />, name: "Shapes" },
@@ -33,11 +31,10 @@ const tools = [
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Map an ApiLayer (backend) → LayerType (frontend) */
 const toLayerType = (l: ApiLayer): LayerType => ({
   id: l.id,
   name: l.name,
-  type: "shape", // Element types come in a future iteration
+  type: "shape",
   locked: l.isLocked,
   visible: l.isVisible,
 });
@@ -47,11 +44,15 @@ const toLayerType = (l: ApiLayer): LayerType => ({
 interface EditorSidebarProps {
   frameSize: FrameSize;
   setFrameSize: (size: FrameSize) => void;
+  onToolSelect?: (tool: EditorTool) => void;
 }
 
-export default function EditorSidebar({ frameSize, setFrameSize }: EditorSidebarProps) {
-  const [layers, setLayers] = useState<LayerType[]>(fallbackLayers);
-  const [activeTool, setActiveTool] = useState("select");
+export default function EditorSidebar({ frameSize, setFrameSize, onToolSelect }: EditorSidebarProps) {
+  const {
+    activeTool,
+    layers,
+    setLayers,
+  } = useEditor();
   const projectId = TEMP_PROJECT_ID;
 
   // ── Fetch layers on mount ──────────────────────────────────────────────────
@@ -65,39 +66,11 @@ export default function EditorSidebar({ frameSize, setFrameSize }: EditorSidebar
       .catch(console.error);
   }, [projectId]);
 
-  // ── Tool click: create layer via API ──────────────────────────────────────
-  const handleToolClick = (toolId: string, toolName: string) => {
-    setActiveTool(toolId);
-
-    if (["rect", "text", "image"].includes(toolId)) {
-      const tempId = Date.now().toString();
-      const newLayer: LayerType = {
-        id: tempId,
-        name: `New ${toolName}`,
-        type: toolId,
-        locked: false,
-        visible: true,
-        active: true,
-      };
-
-      // Optimistic update
-      setLayers(prev => {
-        const activeIndex = prev.findIndex(l => l.active);
-        const insertIndex = activeIndex >= 0 ? activeIndex : 0;
-        const updated = prev.map(l => ({ ...l, active: false }));
-        updated.splice(insertIndex, 0, newLayer);
-
-        // Persist to backend (fire-and-forget)
-        createLayer(projectId, { id: tempId, name: newLayer.name, orderIndex: insertIndex })
-          .catch(console.error);
-        reorderLayers(projectId, updated.map((l, i) => ({ id: l.id, orderIndex: i })))
-          .catch(console.error);
-
-        return updated;
-      });
-
-      setTimeout(() => setActiveTool("select"), 100);
-    }
+  // ── Tool click handler ──────────────────────────────────────────────────────
+  const handleToolClick = (toolId: string) => {
+    // All tools go through onToolSelect so the parent (Editor.tsx) can
+    // handle side effects like committing text before switching tools.
+    onToolSelect?.(toolId as EditorTool);
   };
 
   // ── Layer callbacks (called by LayerPanel after optimistic updates) ────────
@@ -139,10 +112,10 @@ export default function EditorSidebar({ frameSize, setFrameSize }: EditorSidebar
       {/* Tools Section */}
       <div className="p-4 border-b border-white/5">
         <div className="grid grid-cols-4 gap-2">
-          {tools.map((tool) => (
+          {toolList.map((tool) => (
             <button
               key={tool.id}
-              onClick={() => handleToolClick(tool.id, tool.name)}
+              onClick={() => handleToolClick(tool.id)}
               title={tool.name}
               className={`p-2.5 rounded-md flex items-center justify-center transition-all ${activeTool === tool.id
                 ? 'bg-blue-600/20 text-blue-400'
