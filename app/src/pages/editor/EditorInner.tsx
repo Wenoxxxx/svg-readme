@@ -5,7 +5,12 @@ import type { EditorTool, LayerType } from "../../context/EditorContext";
 import Canvas from "../../components/editor-canvas/Canvas";
 import type { TextElementProperties } from "../../components/editor-canvas/ElementsRenderer";
 import { createLayer } from "../../lib/api";
-import { buildSvgString, downloadSvg, copySvgText, copyMarkdown } from "../../lib/export";
+import {
+  buildSvgString,
+  downloadSvg,
+  copySvgText,
+  copyMarkdown,
+} from "../../lib/export";
 
 // ── Types for clipboard and undo history ───────────────────────────────────
 
@@ -15,7 +20,7 @@ interface ClipboardState {
 }
 
 interface HistoryAction {
-  type: 'CREATE' | 'DELETE' | 'MOVE' | 'UPDATE' | 'PASTE';
+  type: "CREATE" | "DELETE" | "MOVE" | "UPDATE" | "PASTE";
   layers: LayerType[];
   elementProperties: Record<string, TextElementProperties>;
   selectedLayerIds: string[];
@@ -68,156 +73,231 @@ export function EditorInner() {
   const [clipboard, setClipboard] = useState<ClipboardState | null>(null);
 
   // Undo/Redo history state
-  const [history, setHistory] = useState<HistoryState>({ past: [], future: [] });
+  const [history, setHistory] = useState<HistoryState>({
+    past: [],
+    future: [],
+  });
 
   // Ref to track if we're editing text for keyboard shortcut guard
   const isEditingRef = useRef(false);
-  isEditingRef.current = isEditingText;
+  useEffect(() => {
+    isEditingRef.current = isEditingText;
+  }, [isEditingText]);
 
   // Ref for export data to avoid re-registering event listeners on every render
   const exportDataRef = useRef({ frameSize, elementProperties, layers });
-  exportDataRef.current = { frameSize, elementProperties, layers };
+  useEffect(() => {
+    exportDataRef.current = { frameSize, elementProperties, layers };
+  }, [frameSize, elementProperties, layers]);
 
   // ── Save current state to history ──────────────────────────────────────
-  const saveToHistory = useCallback((actionType: HistoryAction['type']) => {
-    // Save current state to history before making changes
-    setHistory((prevHistory) => {
-      const newAction: HistoryAction = {
-        type: actionType,
-        layers: [...layers],
-        elementProperties: { ...elementProperties },
-        selectedLayerIds: [...selectedLayerIds]
-      };
-      
-      return {
-        past: [...prevHistory.past, newAction],
-        future: [] // Clear future when new action is performed
-      };
-    });
-  }, [layers, elementProperties, selectedLayerIds]);
+  const saveToHistory = useCallback(
+    (actionType: HistoryAction["type"]) => {
+      // Save current state to history before making changes
+      setHistory((prevHistory) => {
+        const newAction: HistoryAction = {
+          type: actionType,
+          layers: [...layers],
+          elementProperties: { ...elementProperties },
+          selectedLayerIds: [...selectedLayerIds],
+        };
+
+        return {
+          past: [...prevHistory.past, newAction],
+          future: [], // Clear future when new action is performed
+        };
+      });
+    },
+    [layers, elementProperties, selectedLayerIds],
+  );
 
   // ── Delete selected layers function ────────────────────────────────────
   const handleDeleteSelectedLayers = useCallback(() => {
     // Don't delete if no layers are selected
     if (selectedLayerIds.length === 0) return;
-    
+
     // Don't delete if any selected layer is locked
-    const hasLockedLayers = selectedLayerIds.some(id => {
-      const layer = layers.find(l => l.id === id);
+    const hasLockedLayers = selectedLayerIds.some((id) => {
+      const layer = layers.find((l) => l.id === id);
       return layer?.locked;
     });
     if (hasLockedLayers) return;
-    
+
     // Save current state to history before deletion
-    saveToHistory('DELETE');
-    
+    saveToHistory("DELETE");
+
     // Delete selected layers
-    setLayers((prev) => prev.filter(l => !selectedLayerIds.includes(l.id)));
-    
+    setLayers((prev) => prev.filter((l) => !selectedLayerIds.includes(l.id)));
+
     // Clean up element properties for deleted layers
     setElementProperties((prev) => {
       const next = { ...prev };
-      selectedLayerIds.forEach(id => delete next[id]);
+      selectedLayerIds.forEach((id) => delete next[id]);
       return next;
     });
-    
+
     // Clear selection
     setSelectedLayerId(null);
     setSelectedLayerIds([]);
-  }, [selectedLayerIds, layers, setLayers, setElementProperties, setSelectedLayerId, setSelectedLayerIds, saveToHistory]);
+  }, [
+    selectedLayerIds,
+    layers,
+    setLayers,
+    setElementProperties,
+    setSelectedLayerId,
+    setSelectedLayerIds,
+    saveToHistory,
+  ]);
 
   // ── Copy selected layers to clipboard ───────────────────────────────────
   const handleCopy = useCallback(() => {
     // Don't copy if no layers are selected
     if (selectedLayerIds.length === 0) return;
-    
+
     // Copy selected layers and their properties
-    const copiedLayers = layers.filter(layer => selectedLayerIds.includes(layer.id));
+    const copiedLayers = layers.filter((layer) =>
+      selectedLayerIds.includes(layer.id),
+    );
     const copiedElementProperties: Record<string, TextElementProperties> = {};
-    selectedLayerIds.forEach(id => {
+    selectedLayerIds.forEach((id) => {
       if (elementProperties[id]) {
         copiedElementProperties[id] = { ...elementProperties[id] };
       }
     });
-    
+
     setClipboard({
       layers: copiedLayers,
-      elementProperties: copiedElementProperties
+      elementProperties: copiedElementProperties,
     });
   }, [selectedLayerIds, layers, elementProperties]);
 
   // ── Paste from clipboard ───────────────────────────────────────────────────
   const PASTE_OFFSET = 20; // Offset to avoid pasting on top of original
-  
+
   const handlePaste = useCallback(() => {
     // Don't paste if clipboard is empty
     if (!clipboard || clipboard.layers.length === 0) return;
-    
+
     const newLayers: LayerType[] = [];
     const newElementProperties: Record<string, TextElementProperties> = {};
     const newSelectedLayerIds: string[] = [];
-    
+
     // Create new IDs and offset positions for each pasted layer
-    clipboard.layers.forEach(copiedLayer => {
+    clipboard.layers.forEach((copiedLayer) => {
       const newId = `${copiedLayer.id}-copy-${Date.now()}`;
       newLayers.push({
         ...copiedLayer,
         id: newId,
-        active: true
+        active: true,
       });
-      
+
       if (clipboard.elementProperties[copiedLayer.id]) {
         const originalProps = clipboard.elementProperties[copiedLayer.id];
         newElementProperties[newId] = {
           ...originalProps,
           // Offset position
           x: (originalProps.x as number) + PASTE_OFFSET,
-          y: (originalProps.y as number) + PASTE_OFFSET
+          y: (originalProps.y as number) + PASTE_OFFSET,
         };
       }
-      
+
       newSelectedLayerIds.push(newId);
     });
-    
+
     // Save current state to history before pasting
-    saveToHistory('PASTE');
-    
+    saveToHistory("PASTE");
+
     // Add new layers to existing layers
     setLayers((prev) => [...prev, ...newLayers]);
-    
+
     // Add new element properties
     setElementProperties((prev) => ({
       ...prev,
-      ...newElementProperties
+      ...newElementProperties,
     }));
-    
+
     // Select the pasted layers
     setSelectedLayerIds(newSelectedLayerIds);
     setSelectedLayerId(newSelectedLayerIds[0] ?? null);
-  }, [clipboard, saveToHistory, setLayers, setElementProperties, setSelectedLayerIds, setSelectedLayerId]);
+  }, [
+    clipboard,
+    saveToHistory,
+    setLayers,
+    setElementProperties,
+    setSelectedLayerIds,
+    setSelectedLayerId,
+  ]);
 
   // ── Undo last action ─────────────────────────────────────────────────────
   const handleUndo = useCallback(() => {
     // Don't undo if history is empty
     if (history.past.length === 0) return;
-    
+
     // Get the most recent action to undo
     const actionToUndo = history.past[history.past.length - 1];
     const newPast = history.past.slice(0, -1);
     const newFuture = [...history.future, actionToUndo];
-    
+
     // Restore state from the action
     setLayers(actionToUndo.layers);
     setElementProperties(actionToUndo.elementProperties);
     setSelectedLayerIds(actionToUndo.selectedLayerIds);
     setSelectedLayerId(actionToUndo.selectedLayerIds[0] ?? null);
-    
+
     // Update history
     setHistory({
       past: newPast,
-      future: newFuture
+      future: newFuture,
     });
-  }, [history, setLayers, setElementProperties, setSelectedLayerIds, setSelectedLayerId, setHistory]);
+  }, [
+    history,
+    setLayers,
+    setElementProperties,
+    setSelectedLayerIds,
+    setSelectedLayerId,
+    setHistory,
+  ]);
+
+  // ── Commit text edits (called on blur or Escape) ────────────────────────
+  // Figma behavior: both blur and Escape commit the text, nothing "cancels" edits.
+  const handleCommitText = useCallback(() => {
+    if (!editingLayerId) return;
+
+    const trimmed = editingContent.trim();
+
+    if (!trimmed) {
+      // Empty text → remove the layer entirely
+      setLayers((prev) => prev.filter((l) => l.id !== editingLayerId));
+      setElementProperties((prev) => {
+        const next = { ...prev };
+        delete next[editingLayerId];
+        return next;
+      });
+      setSelectedLayerId(null);
+    } else {
+      // Save the typed content and keep the layer selected
+      setElementProperties((prev) => ({
+        ...prev,
+        [editingLayerId]: {
+          ...prev[editingLayerId],
+          content: trimmed,
+        },
+      }));
+      setSelectedLayerId(editingLayerId);
+    }
+
+    setEditingLayerId(null);
+    setEditingContent("");
+    setIsEditingText(false);
+    setActiveTool("move");
+  }, [
+    editingLayerId,
+    editingContent,
+    setLayers,
+    setIsEditingText,
+    setSelectedLayerId,
+    setActiveTool,
+  ]);
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useEffect(() => {
@@ -233,7 +313,7 @@ export function EditorInner() {
 
       // Check for Ctrl/Cmd + key combinations
       const isCtrlPressed = e.ctrlKey || e.metaKey;
-      
+
       switch (e.key) {
         case "v":
         case "V":
@@ -279,7 +359,16 @@ export function EditorInner() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedLayerId, handleCopy, handlePaste, handleUndo, handleDeleteSelectedLayers]);
+  }, [
+    selectedLayerId,
+    handleCopy,
+    handlePaste,
+    handleUndo,
+    handleDeleteSelectedLayers,
+    handleCommitText,
+    setActiveTool,
+    setSelectedLayerId,
+  ]);
 
   // ── Create text element ──────────────────────────────────────────────────
   const handleCreateText = useCallback(
@@ -314,7 +403,7 @@ export function EditorInner() {
       // Deselect all, add layer, set props, enter edit mode
       selectLayer(tempId, false);
       setLayers((prev) =>
-        prev.map((l) => ({ ...l, active: false })).concat(newLayer)
+        prev.map((l) => ({ ...l, active: false })).concat(newLayer),
       );
       setElementProperties((prev) => ({ ...prev, [tempId]: newProps }));
       setEditingLayerId(tempId);
@@ -324,9 +413,17 @@ export function EditorInner() {
       setActiveTool("move");
 
       // Persist to backend (fire-and-forget)
-      createLayer(TEMP_PROJECT_ID, { name: newLayer.name }).catch(console.error);
+      createLayer(TEMP_PROJECT_ID, { name: newLayer.name }).catch(
+        console.error,
+      );
     },
-    [setSelectedLayerId, setLayers, setIsEditingText, setActiveTool]
+    [
+      setSelectedLayerId,
+      setLayers,
+      setIsEditingText,
+      setActiveTool,
+      selectLayer,
+    ],
   );
 
   // ── Edit existing text ────────────────────────────────────────────────────
@@ -340,60 +437,16 @@ export function EditorInner() {
         setSelectedLayerId(layerId);
       }
     },
-    [elementProperties, setIsEditingText, setSelectedLayerId]
+    [elementProperties, setIsEditingText, setSelectedLayerId],
   );
-
-  // ── Commit text edits (called on blur or Escape) ────────────────────────
-  // Figma behavior: both blur and Escape commit the text, nothing "cancels" edits.
-  const handleCommitText = useCallback(() => {
-    if (!editingLayerId) return;
-
-    const trimmed = editingContent.trim();
-
-    if (!trimmed) {
-      // Empty text → remove the layer entirely
-      setLayers((prev) => prev.filter((l) => l.id !== editingLayerId));
-      setElementProperties((prev) => {
-        const next = { ...prev };
-        delete next[editingLayerId];
-        return next;
-      });
-      setSelectedLayerId(null);
-    } else {
-      // Save the typed content and keep the layer selected
-      setElementProperties((prev) => ({
-        ...prev,
-        [editingLayerId]: {
-          ...prev[editingLayerId],
-          content: trimmed,
-        },
-      }));
-      setSelectedLayerId(editingLayerId);
-    }
-
-    setEditingLayerId(null);
-    setEditingContent("");
-    setIsEditingText(false);
-    setActiveTool("move");
-  }, [
-    editingLayerId,
-    editingContent,
-    setLayers,
-    setIsEditingText,
-    setSelectedLayerId,
-    setActiveTool,
-  ]);
 
   // ── Move element ──────────────────────────────────────────────────────────
-  const handleMoveElement = useCallback(
-    (id: string, x: number, y: number) => {
-      setElementProperties((prev) => ({
-        ...prev,
-        [id]: prev[id] ? { ...prev[id], x, y } : prev[id],
-      }));
-    },
-    []
-  );
+  const handleMoveElement = useCallback((id: string, x: number, y: number) => {
+    setElementProperties((prev) => ({
+      ...prev,
+      [id]: prev[id] ? { ...prev[id], x, y } : prev[id],
+    }));
+  }, []);
 
   // ── Tool change handler (commits text if editing, then switches) ──────────
   const handleToolChange = useCallback(
@@ -403,7 +456,7 @@ export function EditorInner() {
       }
       setActiveTool(tool);
     },
-    [isEditingText, handleCommitText, setActiveTool]
+    [isEditingText, handleCommitText, setActiveTool],
   );
 
   // ── Select layer (Figma: single-click selects the layer) ────────────────
@@ -417,7 +470,7 @@ export function EditorInner() {
         clearSelection();
       }
     },
-    [selectLayer, clearSelection]
+    [selectLayer, clearSelection],
   );
 
   // ── Shift+click layer — toggle in multi-select ──────────────────────────
@@ -425,16 +478,13 @@ export function EditorInner() {
     (id: string) => {
       selectLayer(id, true);
     },
-    [selectLayer]
+    [selectLayer],
   );
 
   // ── Clear all selection (click on empty canvas) ─────────────────────────
-  const handleClearSelection = useCallback(
-    () => {
-      clearSelection();
-    },
-    [clearSelection]
-  );
+  const handleClearSelection = useCallback(() => {
+    clearSelection();
+  }, [clearSelection]);
 
   // ── Export handler: build SVG and trigger download ──────────────────────
   const handleExport = useCallback(() => {
@@ -477,7 +527,7 @@ export function EditorInner() {
           setSelectedLayerId(next[0] ?? null);
           // Sync layer active flags within the same batch
           setLayers((prevLayers) =>
-            prevLayers.map((l) => ({ ...l, active: next.includes(l.id) }))
+            prevLayers.map((l) => ({ ...l, active: next.includes(l.id) })),
           );
           return next;
         });
@@ -486,11 +536,11 @@ export function EditorInner() {
         setSelectedLayerIds(ids);
         setSelectedLayerId(ids[0] ?? null);
         setLayers((prevLayers) =>
-          prevLayers.map((l) => ({ ...l, active: ids.includes(l.id) }))
+          prevLayers.map((l) => ({ ...l, active: ids.includes(l.id) })),
         );
       }
     },
-    [setSelectedLayerIds, setSelectedLayerId, setLayers]
+    [setSelectedLayerIds, setSelectedLayerId, setLayers],
   );
 
   // ── Render ────────────────────────────────────────────────────────────────

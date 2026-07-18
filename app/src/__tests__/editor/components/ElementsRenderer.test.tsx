@@ -1,7 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { render } from "@testing-library/react";
 import ElementsRenderer from "../../../components/editor-canvas/ElementsRenderer";
-import type { TextElementProperties, LayerType } from "../../../context/EditorContext";
+import type {
+  TextElementProperties,
+  LayerType,
+} from "../../../context/EditorContext";
 
 /** Factory for a minimal text layer */
 function makeLayer(id: string, overrides?: Partial<LayerType>): LayerType {
@@ -18,7 +21,7 @@ function makeLayer(id: string, overrides?: Partial<LayerType>): LayerType {
 
 /** Factory for text element properties */
 function makeTextProps(
-  overrides?: Partial<TextElementProperties>
+  overrides?: Partial<TextElementProperties>,
 ): TextElementProperties {
   return {
     type: "text",
@@ -56,7 +59,7 @@ describe("ElementsRenderer — selection highlights (Figma reference)", () => {
           onElementMouseDown={() => {}}
           onElementDoubleClick={() => {}}
         />
-      </svg>
+      </svg>,
     );
 
     const selectionRect = container.querySelector("rect[stroke='#3b82f6']");
@@ -78,7 +81,7 @@ describe("ElementsRenderer — selection highlights (Figma reference)", () => {
           onElementMouseDown={() => {}}
           onElementDoubleClick={() => {}}
         />
-      </svg>
+      </svg>,
     );
 
     const selectionRect = container.querySelector("rect[stroke='#3b82f6']");
@@ -100,7 +103,7 @@ describe("ElementsRenderer — selection highlights (Figma reference)", () => {
           onElementMouseDown={() => {}}
           onElementDoubleClick={() => {}}
         />
-      </svg>
+      </svg>,
     );
 
     const textElement = container.querySelector("text");
@@ -122,7 +125,7 @@ describe("ElementsRenderer — selection highlights (Figma reference)", () => {
           onElementMouseDown={() => {}}
           onElementDoubleClick={() => {}}
         />
-      </svg>
+      </svg>,
     );
 
     const textElement = container.querySelector("text");
@@ -145,7 +148,7 @@ describe("ElementsRenderer — selection highlights (Figma reference)", () => {
           onElementMouseDown={() => {}}
           onElementDoubleClick={() => {}}
         />
-      </svg>
+      </svg>,
     );
 
     const hitRect = container.querySelector("rect[fill='transparent']");
@@ -168,7 +171,7 @@ describe("ElementsRenderer — selection highlights (Figma reference)", () => {
           onElementMouseDown={() => {}}
           onElementDoubleClick={() => {}}
         />
-      </svg>
+      </svg>,
     );
 
     const textElement = container.querySelector("text");

@@ -19,9 +19,30 @@ describe("Delete Feature — Backspace and Delete keys (unit tests)", () => {
   beforeEach(() => {
     // Reset mocks before each test
     mockLayers = [
-      { id: "layer-1", name: "Text Layer 1", type: "text", locked: false, visible: true, active: true },
-      { id: "layer-2", name: "Text Layer 2", type: "text", locked: false, visible: true, active: false },
-      { id: "layer-3", name: "Shape Layer 1", type: "shape", locked: false, visible: true, active: false },
+      {
+        id: "layer-1",
+        name: "Text Layer 1",
+        type: "text",
+        locked: false,
+        visible: true,
+        active: true,
+      },
+      {
+        id: "layer-2",
+        name: "Text Layer 2",
+        type: "text",
+        locked: false,
+        visible: true,
+        active: false,
+      },
+      {
+        id: "layer-3",
+        name: "Shape Layer 1",
+        type: "shape",
+        locked: false,
+        visible: true,
+        active: false,
+      },
     ];
 
     mockElementProperties = {
@@ -55,52 +76,51 @@ describe("Delete Feature — Backspace and Delete keys (unit tests)", () => {
   });
 
   // ── Test the core delete function logic ────────────────────────────────────────
-  
+
   const createHandleDeleteSelectedLayers = (
     selectedLayerIds: string[],
     layers: LayerType[],
-    elementProperties: Record<string, TextElementProperties>
   ) => {
     // This simulates the function we will implement in EditorInner.tsx
     const setLayers = vi.fn();
     const setElementProperties = vi.fn();
     const setSelectedLayerId = vi.fn();
     const setSelectedLayerIds = vi.fn();
-    
+
     const handleDeleteSelectedLayers = () => {
       // Don't delete if no layers are selected
       if (selectedLayerIds.length === 0) return;
-      
+
       // Don't delete if any selected layer is locked
-      const hasLockedLayers = selectedLayerIds.some(id => {
-        const layer = layers.find(l => l.id === id);
+      const hasLockedLayers = selectedLayerIds.some((id) => {
+        const layer = layers.find((l) => l.id === id);
         return layer?.locked;
       });
       if (hasLockedLayers) return;
-      
+
       // Delete selected layers
-      setLayers((prev: LayerType[]) => 
-        prev.filter(l => !selectedLayerIds.includes(l.id))
+      setLayers((prev: LayerType[]) =>
+        prev.filter((l) => !selectedLayerIds.includes(l.id)),
       );
-      
+
       // Clean up element properties for deleted layers
       setElementProperties((prev: Record<string, TextElementProperties>) => {
         const next = { ...prev };
-        selectedLayerIds.forEach(id => delete next[id]);
+        selectedLayerIds.forEach((id) => delete next[id]);
         return next;
       });
-      
+
       // Clear selection
       setSelectedLayerId(null);
       setSelectedLayerIds([]);
     };
-    
+
     return {
       setLayers,
       setElementProperties,
       setSelectedLayerId,
       setSelectedLayerIds,
-      handleDeleteSelectedLayers
+      handleDeleteSelectedLayers,
     };
   };
 
@@ -113,9 +133,8 @@ describe("Delete Feature — Backspace and Delete keys (unit tests)", () => {
     const { handleDeleteSelectedLayers } = createHandleDeleteSelectedLayers(
       ["layer-1"],
       mockLayers,
-      mockElementProperties
     );
-    
+
     expect(typeof handleDeleteSelectedLayers).toBe("function");
   });
 
@@ -126,12 +145,8 @@ describe("Delete Feature — Backspace and Delete keys (unit tests)", () => {
       setElementProperties,
       setSelectedLayerId,
       setSelectedLayerIds,
-      handleDeleteSelectedLayers
-    } = createHandleDeleteSelectedLayers(
-      ["layer-1"],
-      mockLayers,
-      mockElementProperties
-    );
+      handleDeleteSelectedLayers,
+    } = createHandleDeleteSelectedLayers(["layer-1"], mockLayers);
 
     // Simulate Backspace key - this should call handleDeleteSelectedLayers
     // This test will fail until we implement the keyboard handler
@@ -139,10 +154,10 @@ describe("Delete Feature — Backspace and Delete keys (unit tests)", () => {
 
     // Verify that setLayers was called to remove layer-1
     expect(setLayers).toHaveBeenCalled();
-    
+
     // Verify that elementProperties for layer-1 was cleaned up
     expect(setElementProperties).toHaveBeenCalled();
-    
+
     // Verify that selection was cleared
     expect(setSelectedLayerId).toHaveBeenCalledWith(null);
     expect(setSelectedLayerIds).toHaveBeenCalledWith([]);
@@ -155,12 +170,8 @@ describe("Delete Feature — Backspace and Delete keys (unit tests)", () => {
       setElementProperties,
       setSelectedLayerId,
       setSelectedLayerIds,
-      handleDeleteSelectedLayers
-    } = createHandleDeleteSelectedLayers(
-      ["layer-1"],
-      mockLayers,
-      mockElementProperties
-    );
+      handleDeleteSelectedLayers,
+    } = createHandleDeleteSelectedLayers(["layer-1"], mockLayers);
 
     // Simulate Delete key - this should call handleDeleteSelectedLayers
     handleDeleteSelectedLayers();
@@ -174,14 +185,8 @@ describe("Delete Feature — Backspace and Delete keys (unit tests)", () => {
 
   // Test 4: Should not delete when no layers are selected
   it("should not delete when no layers are selected", () => {
-    const {
-      setLayers,
-      handleDeleteSelectedLayers
-    } = createHandleDeleteSelectedLayers(
-      [],
-      mockLayers,
-      mockElementProperties
-    );
+    const { setLayers, handleDeleteSelectedLayers } =
+      createHandleDeleteSelectedLayers([], mockLayers);
 
     handleDeleteSelectedLayers();
 
@@ -191,50 +196,37 @@ describe("Delete Feature — Backspace and Delete keys (unit tests)", () => {
 
   // Test 5: Should delete multiple selected layers
   it("should delete all selected layers when multiple are selected", () => {
-    const {
-      setLayers,
-      setElementProperties,
-      handleDeleteSelectedLayers
-    } = createHandleDeleteSelectedLayers(
-      ["layer-1", "layer-2"],
-      mockLayers,
-      mockElementProperties
-    );
+    const { setLayers, setElementProperties, handleDeleteSelectedLayers } =
+      createHandleDeleteSelectedLayers(["layer-1", "layer-2"], mockLayers);
 
     handleDeleteSelectedLayers();
 
     expect(setLayers).toHaveBeenCalled();
     expect(setElementProperties).toHaveBeenCalled();
-    
+
     // Check that the callback removes both selected layers
     const setLayersCall = setLayers.mock.calls[0][0];
-    if (typeof setLayersCall === 'function') {
+    if (typeof setLayersCall === "function") {
       const result = setLayersCall(mockLayers);
       expect(result).toHaveLength(1);
-      expect(result.some(l => l.id === "layer-1")).toBe(false);
-      expect(result.some(l => l.id === "layer-2")).toBe(false);
-      expect(result.some(l => l.id === "layer-3")).toBe(true);
+      expect(result.some((l) => l.id === "layer-1")).toBe(false);
+      expect(result.some((l) => l.id === "layer-2")).toBe(false);
+      expect(result.some((l) => l.id === "layer-3")).toBe(true);
     }
   });
 
   // Test 6: Should clean up elementProperties for deleted layers
   it("should clean up elementProperties for deleted layers", () => {
-    const {
-      setElementProperties,
-      handleDeleteSelectedLayers
-    } = createHandleDeleteSelectedLayers(
-      ["layer-1"],
-      mockLayers,
-      mockElementProperties
-    );
+    const { setElementProperties, handleDeleteSelectedLayers } =
+      createHandleDeleteSelectedLayers(["layer-1"], mockLayers);
 
     handleDeleteSelectedLayers();
 
     expect(setElementProperties).toHaveBeenCalled();
-    
+
     // Check that the callback removes the deleted layer's properties
     const setElementPropsCall = setElementProperties.mock.calls[0][0];
-    if (typeof setElementPropsCall === 'function') {
+    if (typeof setElementPropsCall === "function") {
       const result = setElementPropsCall(mockElementProperties);
       expect(result["layer-1"]).toBeUndefined();
       expect(result["layer-2"]).toBeDefined();
@@ -244,17 +236,18 @@ describe("Delete Feature — Backspace and Delete keys (unit tests)", () => {
   // Test 7: Should not delete locked layers
   it("should not delete locked layers", () => {
     const lockedLayers = [
-      { id: "layer-1", name: "Locked Layer", type: "text", locked: true, visible: true, active: true },
+      {
+        id: "layer-1",
+        name: "Locked Layer",
+        type: "text",
+        locked: true,
+        visible: true,
+        active: true,
+      },
     ];
 
-    const {
-      setLayers,
-      handleDeleteSelectedLayers
-    } = createHandleDeleteSelectedLayers(
-      ["layer-1"],
-      lockedLayers,
-      {}
-    );
+    const { setLayers, handleDeleteSelectedLayers } =
+      createHandleDeleteSelectedLayers(["layer-1"], lockedLayers, {});
 
     handleDeleteSelectedLayers();
 
@@ -264,14 +257,8 @@ describe("Delete Feature — Backspace and Delete keys (unit tests)", () => {
 
   // Test 8: Should handle empty selectedLayerIds gracefully
   it("should handle empty selectedLayerIds gracefully", () => {
-    const {
-      setLayers,
-      handleDeleteSelectedLayers
-    } = createHandleDeleteSelectedLayers(
-      [],
-      mockLayers,
-      mockElementProperties
-    );
+    const { setLayers, handleDeleteSelectedLayers } =
+      createHandleDeleteSelectedLayers([], mockLayers);
 
     // Should not throw or modify state
     expect(() => handleDeleteSelectedLayers()).not.toThrow();
@@ -280,14 +267,8 @@ describe("Delete Feature — Backspace and Delete keys (unit tests)", () => {
 
   // Test 9: Should handle non-existent layer IDs gracefully
   it("should handle non-existent layer IDs gracefully", () => {
-    const {
-      setLayers,
-      handleDeleteSelectedLayers
-    } = createHandleDeleteSelectedLayers(
-      ["non-existent-layer"],
-      mockLayers,
-      mockElementProperties
-    );
+    const { setLayers, handleDeleteSelectedLayers } =
+      createHandleDeleteSelectedLayers(["non-existent-layer"], mockLayers);
 
     // Should not throw
     expect(() => handleDeleteSelectedLayers()).not.toThrow();
@@ -303,10 +284,10 @@ describe("Delete Feature — Backspace and Delete keys (unit tests)", () => {
 describe("Delete Feature — Integration tests", () => {
   // These tests verify that the delete functionality works correctly with the actual
   // EditorInner component and keyboard shortcuts
-  
+
   // Note: These tests would require more complex setup with actual DOM and event handling
   // For now, we'll focus on the unit tests above which verify the core logic
-  
+
   it("should pass all unit tests for delete functionality", () => {
     // This is a placeholder to document that integration tests would go here
     // The unit tests above already verify the core logic that would be used

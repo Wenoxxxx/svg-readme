@@ -34,7 +34,6 @@ export default function TextOverlay({
   x,
   y,
   width,
-  height,
   fontFamily,
   fontSize,
   fontWeight,
@@ -46,7 +45,10 @@ export default function TextOverlay({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Compute overlay width — use fixed width if set, otherwise auto-size
-  const overlayWidth = width === "auto" ? Math.max(content.length * fontSize * 0.6 + 16, 60) : width;
+  const overlayWidth =
+    width === "auto"
+      ? Math.max(content.length * fontSize * 0.6 + 16, 60)
+      : width;
 
   // Adjust Y so the text baseline aligns with SVG text
   const adjustedY = y - fontSize * 0.85;

@@ -3,7 +3,7 @@ import type { TextElementProperties } from "../../components/editor-canvas/Eleme
 
 /** Factory for text element properties */
 function makeTextProps(
-  overrides?: Partial<TextElementProperties>
+  overrides?: Partial<TextElementProperties>,
 ): TextElementProperties {
   return {
     type: "text",
@@ -72,7 +72,12 @@ describe("Canvas callbacks — Move Tool interactions (Figma reference)", () => 
       }
     };
 
-    simulateDoubleClick({} as React.MouseEvent, "layer-1", "move", makeTextProps());
+    simulateDoubleClick(
+      {} as React.MouseEvent,
+      "layer-1",
+      "move",
+      makeTextProps(),
+    );
     expect(onEditText).toHaveBeenCalledWith("layer-1");
   });
 
@@ -173,7 +178,6 @@ describe("Canvas callbacks — Move Tool interactions (Figma reference)", () => 
     const simulateMoveToolClick = (
       e: { stopPropagation: () => void },
       layerId: string,
-      hasProps: boolean,
     ) => {
       e.stopPropagation();
       onSelectLayer(layerId);
@@ -193,7 +197,7 @@ describe("Canvas callbacks — Move Tool interactions (Figma reference)", () => 
     const e = { stopPropagation: vi.fn() };
 
     // Move Tool behavior
-    simulateMoveToolClick(e, "layer-1", true);
+    simulateMoveToolClick(e, "layer-1");
     expect(onSelectLayer).toHaveBeenCalledWith("layer-1");
     expect(onEditText).not.toHaveBeenCalled();
 

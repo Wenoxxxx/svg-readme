@@ -5,7 +5,10 @@ import type { TextElementProperties } from "./ElementsRenderer";
 
 export const MIN_TEXTBOX_SIZE = 20;
 
-export const DEFAULT_TEXT_PROPS: Omit<TextElementProperties, "x" | "y" | "content"> = {
+export const DEFAULT_TEXT_PROPS: Omit<
+  TextElementProperties,
+  "x" | "y" | "content"
+> = {
   type: "text",
   width: "auto",
   height: 30,
@@ -61,7 +64,12 @@ export interface CanvasProps {
   isEditingText: boolean;
   elementProperties: Record<string, TextElementProperties>;
   /** Called when user clicks on canvas (text tool) to create text */
-  onCreateText: (x: number, y: number, width: number | "auto", height: number) => void;
+  onCreateText: (
+    x: number,
+    y: number,
+    width: number | "auto",
+    height: number,
+  ) => void;
   /** Called when an element is selected */
   onSelectLayer: (id: string | null) => void;
   /** Called when an element is clicked with Shift held — toggles multi-select.

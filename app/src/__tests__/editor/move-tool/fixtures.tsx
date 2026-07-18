@@ -1,4 +1,8 @@
-import { EditorProvider, useEditor, type EditorState } from "../../../context/EditorContext";
+import {
+  EditorProvider,
+  useEditor,
+  type EditorState,
+} from "../../../context/EditorContext";
 import type { LayerType } from "../../../context/EditorContext";
 import type { TextElementProperties } from "../../../components/editor-canvas/ElementsRenderer";
 import { render } from "@testing-library/react";
@@ -19,7 +23,10 @@ export function nextLayerId(): string {
 }
 
 /** Factory for a minimal text layer */
-export function makeLayer(id: string, overrides?: Partial<LayerType>): LayerType {
+export function makeLayer(
+  id: string,
+  overrides?: Partial<LayerType>,
+): LayerType {
   return {
     id,
     name: `Layer ${id}`,
@@ -33,7 +40,7 @@ export function makeLayer(id: string, overrides?: Partial<LayerType>): LayerType
 
 /** Factory for text element properties */
 export function makeTextProps(
-  overrides?: Partial<TextElementProperties>
+  overrides?: Partial<TextElementProperties>,
 ): TextElementProperties {
   return {
     type: "text",
@@ -55,7 +62,7 @@ export function makeTextProps(
 
 export function renderWithProvider(
   ui: React.ReactElement,
-  initial?: Partial<EditorState>
+  initial?: Partial<EditorState>,
 ) {
   return render(<EditorProvider initial={initial}>{ui}</EditorProvider>);
 }
@@ -66,12 +73,10 @@ export function MoveToolTestConsumer() {
     <div>
       <span data-testid="activeTool">{ctx.activeTool}</span>
       <span data-testid="isEditingText">{String(ctx.isEditingText)}</span>
-      <span data-testid="selectedLayerId">
-        {ctx.selectedLayerId ?? "null"}
-      </span>
+      <span data-testid="selectedLayerId">{ctx.selectedLayerId ?? "null"}</span>
       <span data-testid="selectedLayerType">
         {ctx.selectedLayerId
-          ? ctx.layers.find((l) => l.id === ctx.selectedLayerId)?.type ?? "?"
+          ? (ctx.layers.find((l) => l.id === ctx.selectedLayerId)?.type ?? "?")
           : "none"}
       </span>
       <span data-testid="layersCount">{ctx.layers.length}</span>
@@ -102,10 +107,7 @@ export function MoveToolTestConsumer() {
         data-testid="addLayer"
         onClick={() => {
           const id = nextLayerId();
-          ctx.setLayers((prev) => [
-            ...prev,
-            makeLayer(id),
-          ]);
+          ctx.setLayers((prev) => [...prev, makeLayer(id)]);
         }}
       >
         Add Layer

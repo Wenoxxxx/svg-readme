@@ -63,13 +63,15 @@ export function buildSvgString(options: BuildSvgOptions): string {
     const weight = props.fontWeight;
 
     textElements.push(
-      `    <text x="${props.x}" y="${props.y}" font-family="${family}" font-size="${size}" font-weight="${weight}" fill="${fill}" text-anchor="${anchor}">${escXml(props.content)}</text>`
+      `    <text x="${props.x}" y="${props.y}" font-family="${family}" font-size="${size}" font-weight="${weight}" fill="${fill}" text-anchor="${anchor}">${escXml(props.content)}</text>`,
     );
   }
 
   // Build the SVG
   const rx = rounded ? ` rx="${borderRadius}"` : "";
-  const borderStroke = showBorder ? ` stroke="rgba(255,255,255,0.10)" stroke-width="1"` : "";
+  const borderStroke = showBorder
+    ? ` stroke="rgba(255,255,255,0.10)" stroke-width="1"`
+    : "";
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">

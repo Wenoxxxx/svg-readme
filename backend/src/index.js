@@ -1,10 +1,10 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const projectRoutes = require('./routes/projectRoutes');
-const layerRoutes = require('./routes/layerRoutes');
-const { errorHandler } = require('./middleware/errorMiddleware');
-const prisma = require('./config/db');
+require("dotenv").config();
+const express = require("express");
+const cors = require("cors");
+const projectRoutes = require("./routes/projectRoutes");
+const layerRoutes = require("./routes/layerRoutes");
+const { errorHandler } = require("./middleware/errorMiddleware");
+const prisma = require("./config/db");
 
 const app = express();
 
@@ -14,16 +14,16 @@ app.use(express.json());
 // Seed default User/Project for development lookup
 async function seedDefaultData() {
   try {
-    const defaultUserId = '00000000-0000-0000-0000-000000000000';
-    const defaultProjectId = '00000000-0000-0000-0000-000000000001';
+    const defaultUserId = "00000000-0000-0000-0000-000000000000";
+    const defaultProjectId = "00000000-0000-0000-0000-000000000001";
 
     await prisma.user.upsert({
       where: { id: defaultUserId },
       update: {},
       create: {
         id: defaultUserId,
-        email: 'default@example.com'
-      }
+        email: "default@example.com",
+      },
     });
 
     await prisma.project.upsert({
@@ -32,26 +32,26 @@ async function seedDefaultData() {
       create: {
         id: defaultProjectId,
         userId: defaultUserId,
-        name: 'Default Project'
-      }
+        name: "Default Project",
+      },
     });
-    console.log('✓ Seeding complete: Default User and Project are verified.');
+    console.log("✓ Seeding complete: Default User and Project are verified.");
   } catch (error) {
-    console.error('Failed to seed default database records:', error);
+    console.error("Failed to seed default database records:", error);
   }
 }
 
 seedDefaultData();
 
 // Basic health check route
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok' });
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok" });
 });
 
 // Mount Routes
-app.use('/api/projects', projectRoutes);
+app.use("/api/projects", projectRoutes);
 // Layers are nested under a project: /api/projects/:projectId/layers
-app.use('/api/projects/:projectId/layers', layerRoutes);
+app.use("/api/projects/:projectId/layers", layerRoutes);
 
 // Error Middleware
 app.use(errorHandler);

@@ -22,7 +22,7 @@ export type LayerType = {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const API_BASE = 'http://localhost:3001/api';
+const API_BASE = "http://localhost:3001/api";
 
 const handleResponse = async <T>(res: Response): Promise<T> => {
   if (!res.ok) {
@@ -43,11 +43,11 @@ export const getLayers = async (projectId: string): Promise<ApiLayer[]> => {
 /** POST /api/projects/:projectId/layers */
 export const createLayer = async (
   projectId: string,
-  payload: { id?: string; name: string; orderIndex?: number }
+  payload: { id?: string; name: string; orderIndex?: number },
 ): Promise<ApiLayer> => {
   const res = await fetch(`${API_BASE}/projects/${projectId}/layers`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
   return handleResponse<ApiLayer>(res);
@@ -57,20 +57,25 @@ export const createLayer = async (
 export const updateLayer = async (
   projectId: string,
   id: string,
-  updates: Partial<Pick<ApiLayer, 'name' | 'isLocked' | 'isVisible' | 'orderIndex'>>
+  updates: Partial<
+    Pick<ApiLayer, "name" | "isLocked" | "isVisible" | "orderIndex">
+  >,
 ): Promise<ApiLayer> => {
   const res = await fetch(`${API_BASE}/projects/${projectId}/layers/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(updates),
   });
   return handleResponse<ApiLayer>(res);
 };
 
 /** DELETE /api/projects/:projectId/layers/:id */
-export const deleteLayer = async (projectId: string, id: string): Promise<void> => {
+export const deleteLayer = async (
+  projectId: string,
+  id: string,
+): Promise<void> => {
   const res = await fetch(`${API_BASE}/projects/${projectId}/layers/${id}`, {
-    method: 'DELETE',
+    method: "DELETE",
   });
   return handleResponse<void>(res);
 };
@@ -78,11 +83,11 @@ export const deleteLayer = async (projectId: string, id: string): Promise<void> 
 /** PUT /api/projects/:projectId/layers/reorder */
 export const reorderLayers = async (
   projectId: string,
-  layers: { id: string; orderIndex: number }[]
+  layers: { id: string; orderIndex: number }[],
 ): Promise<void> => {
   const res = await fetch(`${API_BASE}/projects/${projectId}/layers/reorder`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ layers }),
   });
   return handleResponse<void>(res);

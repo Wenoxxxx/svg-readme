@@ -1,4 +1,4 @@
-const prisma = require('../config/db');
+const prisma = require("../config/db");
 
 // @desc    Get all layers for a project
 // @route   GET /api/projects/:projectId/layers
@@ -7,7 +7,7 @@ const getLayers = async (req, res, next) => {
     const { projectId } = req.params;
     const layers = await prisma.layer.findMany({
       where: { projectId },
-      orderBy: { orderIndex: 'asc' },
+      orderBy: { orderIndex: "asc" },
     });
     res.json(layers);
   } catch (error) {
@@ -31,7 +31,7 @@ const createLayer = async (req, res, next) => {
     const layer = await prisma.layer.create({
       data: {
         ...(id ? { id } : {}),
-        name: name || 'New Layer',
+        name: name || "New Layer",
         orderIndex: orderIndex ?? 0,
         projectId,
       },
@@ -87,7 +87,7 @@ const reorderLayers = async (req, res, next) => {
       prisma.layer.update({
         where: { id },
         data: { orderIndex },
-      })
+      }),
     );
 
     await prisma.$transaction(updates);

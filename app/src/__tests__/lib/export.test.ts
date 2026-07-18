@@ -20,7 +20,7 @@ describe("buildSvgString", () => {
   });
 
   const makeTextProps = (
-    overrides?: Partial<TextElementProperties>
+    overrides?: Partial<TextElementProperties>,
   ): TextElementProperties => ({
     type: "text",
     x: 100,
@@ -88,10 +88,10 @@ describe("buildSvgString", () => {
       elementProperties: {},
     });
 
-    expect(svgString).toContain('<?xml');
-    expect(svgString).toContain('<svg');
+    expect(svgString).toContain("<?xml");
+    expect(svgString).toContain("<svg");
     expect(svgString).toContain('xmlns="http://www.w3.org/2000/svg"');
-    expect(svgString).toContain('</svg>');
+    expect(svgString).toContain("</svg>");
     expect(svgString).toContain('viewBox="0 0 800 200"');
   });
 
@@ -197,7 +197,7 @@ describe("buildSvgString", () => {
 
     expect(svgStringWithBorder).toContain('stroke="rgba(255,255,255,0.10)"');
     expect(svgStringWithBorder).toContain('stroke-width="1"');
-    expect(svgStringNoBorder).not.toContain('stroke=');
+    expect(svgStringNoBorder).not.toContain("stroke=");
   });
 
   // Test 10: Text alignment is correctly applied

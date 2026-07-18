@@ -1,10 +1,8 @@
-import { useState, useRef, useCallback, type ReactNode } from "react";
-import ElementsRenderer, { getTextBoundingBox, type TextElementProperties } from "./ElementsRenderer";
+import { useState, useRef, useCallback } from "react";
+import ElementsRenderer, { getTextBoundingBox } from "./ElementsRenderer";
 import TextOverlay from "./TextOverlay";
-import type { LayerType, EditorTool } from "../../context/EditorContext";
 import {
   MIN_TEXTBOX_SIZE,
-  DEFAULT_TEXT_PROPS,
   type DragState,
   type TextDragState,
   type RubberBandState,
@@ -27,7 +25,6 @@ export default function Canvas({
   onClearSelection,
   onRubberBandSelect,
   onMoveElement,
-  onEditingChange,
   onEditText,
   editingContent,
   editingLayerId,
@@ -37,9 +34,14 @@ export default function Canvas({
 }: CanvasProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
-  const [textDragState, setTextDragState] = useState<TextDragState | null>(null);
-  const [rubberBandState, setRubberBandState] = useState<RubberBandState | null>(null);
-  const [rubberBandHighlightedIds, setRubberBandHighlightedIds] = useState<string[]>([]);
+  const [textDragState, setTextDragState] = useState<TextDragState | null>(
+    null,
+  );
+  const [rubberBandState, setRubberBandState] =
+    useState<RubberBandState | null>(null);
+  const [rubberBandHighlightedIds, setRubberBandHighlightedIds] = useState<
+    string[]
+  >([]);
 
   // ── Cursor ──────────────────────────────────────────────────────────────────
   const getCursor = () => {
@@ -59,7 +61,7 @@ export default function Canvas({
         y: e.clientY - rect.top,
       };
     },
-    []
+    [],
   );
 
   // ── Mouse down handler ─────────────────────────────────────────────────────
@@ -95,7 +97,7 @@ export default function Canvas({
         });
       }
     },
-    [activeTool, isEditingText, getSVGCoords, onSelectLayer, onClearSelection, onCommitText]
+    [activeTool, isEditingText, getSVGCoords, onCommitText],
   );
 
   // ── Element mouse down (for move tool selection/drag) ──────────────────────
@@ -125,16 +127,28 @@ export default function Canvas({
           // If this layer is part of a multi-selection, capture initial
           // positions of ALL selected layers for multi-drag.
           const allSelectedIds: string[] = [];
-          if (selectedLayerIds && selectedLayerIds.length > 1 && selectedLayerIds.includes(layerId)) {
+          if (
+            selectedLayerIds &&
+            selectedLayerIds.length > 1 &&
+            selectedLayerIds.includes(layerId)
+          ) {
             allSelectedIds.push(...selectedLayerIds);
           }
 
-          const multiStartPositions: Record<string, { x: number; y: number }> | undefined =
+          const multiStartPositions:
+            | Record<string, { x: number; y: number }>
+            | undefined =
             allSelectedIds.length > 1
               ? Object.fromEntries(
                   allSelectedIds
                     .filter((id) => elementProperties[id])
-                    .map((id) => [id, { x: elementProperties[id].x, y: elementProperties[id].y }])
+                    .map((id) => [
+                      id,
+                      {
+                        x: elementProperties[id].x,
+                        y: elementProperties[id].y,
+                      },
+                    ]),
                 )
               : undefined;
 
@@ -155,12 +169,21 @@ export default function Canvas({
         }
       }
     },
-    [activeTool, isEditingText, elementProperties, selectedLayerIds, onSelectLayer, onShiftSelectLayer, onEditText, onCommitText]
+    [
+      activeTool,
+      isEditingText,
+      elementProperties,
+      selectedLayerIds,
+      onSelectLayer,
+      onShiftSelectLayer,
+      onEditText,
+      onCommitText,
+    ],
   );
 
   // ── Element double click (move tool → edit text) ──────────────────────────
   const handleElementDoubleClick = useCallback(
-    (e: React.MouseEvent, layerId: string) => {
+    (_e: React.MouseEvent, layerId: string) => {
       if (activeTool === "move") {
         const props = elementProperties[layerId];
         if (props && props.type === "text") {
@@ -168,7 +191,7 @@ export default function Canvas({
         }
       }
     },
-    [activeTool, elementProperties, onEditText]
+    [activeTool, elementProperties, onEditText],
   );
 
   // ── Compute which layers intersect with the rubber-band rect ───────────────
@@ -190,13 +213,18 @@ export default function Canvas({
 
         const bb = getTextBoundingBox(props);
         // AABB intersection check
-        if (bb.x < rx + rw && bb.x + bb.width > rx && bb.y < ry + rh && bb.y + bb.height > ry) {
+        if (
+          bb.x < rx + rw &&
+          bb.x + bb.width > rx &&
+          bb.y < ry + rh &&
+          bb.y + bb.height > ry
+        ) {
           intersecting.push(layer.id);
         }
       }
       return intersecting;
     },
-    [layers, elementProperties]
+    [layers, elementProperties],
   );
 
   // ── Mouse move handler ─────────────────────────────────────────────────────
@@ -207,7 +235,9 @@ export default function Canvas({
           // Multi-drag: move all selected layers by the same delta
           const dx = e.clientX - dragState.startX;
           const dy = e.clientY - dragState.startY;
-          for (const [id, pos] of Object.entries(dragState.multiStartPositions)) {
+          for (const [id, pos] of Object.entries(
+            dragState.multiStartPositions,
+          )) {
             onMoveElement(id, pos.x + dx, pos.y + dy);
           }
         } else {
@@ -229,60 +259,73 @@ export default function Canvas({
         // Text tool drag preview
         const coords = getSVGCoords(e);
         setTextDragState((prev) =>
-          prev ? { ...prev, currentX: coords.x, currentY: coords.y } : null
+          prev ? { ...prev, currentX: coords.x, currentY: coords.y } : null,
         );
       }
     },
-    [dragState, rubberBandState, textDragState, getSVGCoords, onMoveElement, computeRubberBandElements]
+    [
+      dragState,
+      rubberBandState,
+      textDragState,
+      getSVGCoords,
+      onMoveElement,
+      computeRubberBandElements,
+    ],
   );
 
   // ── Mouse up handler ───────────────────────────────────────────────────────
-  const handleMouseUp = useCallback(
-    (e: React.MouseEvent) => {
-      if (dragState) {
-        setDragState(null);
-      } else if (rubberBandState) {
-        const dx = rubberBandState.currentX - rubberBandState.startX;
-        const dy = rubberBandState.currentY - rubberBandState.startY;
+  const handleMouseUp = useCallback(() => {
+    if (dragState) {
+      setDragState(null);
+    } else if (rubberBandState) {
+      const dx = rubberBandState.currentX - rubberBandState.startX;
+      const dy = rubberBandState.currentY - rubberBandState.startY;
 
-        if (Math.abs(dx) < 3 && Math.abs(dy) < 3) {
-          // Tiny drag — treat as click on empty canvas → clear selection
-          if (rubberBandState.addToExisting) {
-            // Shift+click on empty canvas: no change, keep existing selection
-          } else if (onClearSelection) {
-            onClearSelection();
-          } else {
-            onSelectLayer(null);
-          }
+      if (Math.abs(dx) < 3 && Math.abs(dy) < 3) {
+        // Tiny drag — treat as click on empty canvas → clear selection
+        if (rubberBandState.addToExisting) {
+          // Shift+click on empty canvas: no change, keep existing selection
+        } else if (onClearSelection) {
+          onClearSelection();
         } else {
-          // Significant drag — finalize rubber-band selection
-          const intersecting = computeRubberBandElements(rubberBandState);
-          onRubberBandSelect?.(intersecting, rubberBandState.addToExisting);
+          onSelectLayer(null);
         }
-
-        setRubberBandState(null);
-        setRubberBandHighlightedIds([]);
-      } else if (textDragState) {
-        const dx = textDragState.currentX - textDragState.startX;
-        const dy = textDragState.currentY - textDragState.startY;
-
-        if (Math.abs(dx) < 3 && Math.abs(dy) < 3) {
-          // Single click — auto-width text
-          onCreateText(textDragState.startX, textDragState.startY, "auto", 30);
-        } else {
-          // Drag — fixed-width text with minimum size
-          const finalWidth = Math.max(Math.abs(dx), MIN_TEXTBOX_SIZE);
-          const finalHeight = Math.max(Math.abs(dy), MIN_TEXTBOX_SIZE);
-          const finalX = Math.min(textDragState.startX, textDragState.currentX);
-          const finalY = Math.min(textDragState.startY, textDragState.currentY);
-          onCreateText(finalX, finalY, finalWidth, finalHeight);
-        }
-
-        setTextDragState(null);
+      } else {
+        // Significant drag — finalize rubber-band selection
+        const intersecting = computeRubberBandElements(rubberBandState);
+        onRubberBandSelect?.(intersecting, rubberBandState.addToExisting);
       }
-    },
-    [dragState, rubberBandState, textDragState, computeRubberBandElements, onRubberBandSelect, onClearSelection, onSelectLayer, onCreateText]
-  );
+
+      setRubberBandState(null);
+      setRubberBandHighlightedIds([]);
+    } else if (textDragState) {
+      const dx = textDragState.currentX - textDragState.startX;
+      const dy = textDragState.currentY - textDragState.startY;
+
+      if (Math.abs(dx) < 3 && Math.abs(dy) < 3) {
+        // Single click — auto-width text
+        onCreateText(textDragState.startX, textDragState.startY, "auto", 30);
+      } else {
+        // Drag — fixed-width text with minimum size
+        const finalWidth = Math.max(Math.abs(dx), MIN_TEXTBOX_SIZE);
+        const finalHeight = Math.max(Math.abs(dy), MIN_TEXTBOX_SIZE);
+        const finalX = Math.min(textDragState.startX, textDragState.currentX);
+        const finalY = Math.min(textDragState.startY, textDragState.currentY);
+        onCreateText(finalX, finalY, finalWidth, finalHeight);
+      }
+
+      setTextDragState(null);
+    }
+  }, [
+    dragState,
+    rubberBandState,
+    textDragState,
+    computeRubberBandElements,
+    onRubberBandSelect,
+    onClearSelection,
+    onSelectLayer,
+    onCreateText,
+  ]);
 
   // ── Rubber-band selection preview rect ──────────────────────────────────────
   const rubberBandPreview = rubberBandState ? (
@@ -331,7 +374,6 @@ export default function Canvas({
         textAlign={elementProperties[editingLayerId].textAlign}
         onChange={onEditingContentChange ?? (() => {})}
         onCommit={onCommitText ?? (() => {})}
-
       />
     ) : null;
 

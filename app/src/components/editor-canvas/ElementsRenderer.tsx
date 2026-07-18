@@ -31,7 +31,7 @@ const TEXT_ANCHOR_MAP: Record<string, "start" | "middle" | "end"> = {
 function getTextBoundingBox(props: TextElementProperties) {
   const charWidth = props.fontSize * 0.6;
   let textWidth: number;
-  let textHeight = props.fontSize * 1.4;
+  let textHeight: number;
 
   if (props.width === "auto") {
     textWidth = Math.max(props.content.length * charWidth, 20);
@@ -82,10 +82,18 @@ function TextElement({
           y={bb.y}
           width={bb.width}
           height={bb.height}
-          fill={isRubberBandHighlighted && !isSelected ? "rgba(59,130,246,0.08)" : "none"}
-          stroke={isRubberBandHighlighted && !isSelected ? "#60a5fa" : "#3b82f6"}
+          fill={
+            isRubberBandHighlighted && !isSelected
+              ? "rgba(59,130,246,0.08)"
+              : "none"
+          }
+          stroke={
+            isRubberBandHighlighted && !isSelected ? "#60a5fa" : "#3b82f6"
+          }
           strokeWidth={isRubberBandHighlighted && !isSelected ? 1 : 1}
-          strokeDasharray={isRubberBandHighlighted && !isSelected ? "3 2" : undefined}
+          strokeDasharray={
+            isRubberBandHighlighted && !isSelected ? "3 2" : undefined
+          }
           rx={2}
           className="pointer-events-none"
         />
@@ -154,7 +162,7 @@ export default function ElementsRenderer({
   // Compute the set of selected IDs — prefer selectedLayerIds if provided,
   // otherwise fall back to the legacy single selectedLayerId
   const selectedSet = new Set(
-    selectedLayerIds ?? (selectedLayerId ? [selectedLayerId] : [])
+    selectedLayerIds ?? (selectedLayerId ? [selectedLayerId] : []),
   );
 
   // Compute the set of rubber-band highlighted IDs
@@ -162,7 +170,7 @@ export default function ElementsRenderer({
 
   // Only render visible layers that have properties
   const visibleLayers = layers.filter(
-    (l) => l.visible && elementProperties[l.id]
+    (l) => l.visible && elementProperties[l.id],
   );
 
   return (
@@ -171,7 +179,8 @@ export default function ElementsRenderer({
         const props = elementProperties[layer.id];
         const isSelected =
           selectedSet.has(layer.id) && editingLayerId !== layer.id;
-        const isRubberBandHighlighted = rubberBandSet.has(layer.id) && !selectedSet.has(layer.id);
+        const isRubberBandHighlighted =
+          rubberBandSet.has(layer.id) && !selectedSet.has(layer.id);
         const isEditing = editingLayerId === layer.id;
 
         if (!props) return null;

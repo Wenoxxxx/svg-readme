@@ -1,4 +1,10 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  type ReactNode,
+} from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -63,23 +69,23 @@ interface EditorProviderProps {
 
 export function EditorProvider({ children, initial }: EditorProviderProps) {
   const [activeTool, setActiveTool] = useState<EditorTool>(
-    initial?.activeTool ?? "move"
+    initial?.activeTool ?? "move",
   );
   const [isEditingText, setIsEditingText] = useState(
-    initial?.isEditingText ?? false
+    initial?.isEditingText ?? false,
   );
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(
-    initial?.selectedLayerId ?? null
+    initial?.selectedLayerId ?? null,
   );
   const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>(
-    initial?.selectedLayerIds ?? []
+    initial?.selectedLayerIds ?? [],
   );
   const [layers, setLayers] = useState<LayerType[]>(initial?.layers ?? []);
   const [frameSize, setFrameSize] = useState(
-    initial?.frameSize ?? { width: 700, height: 350 }
+    initial?.frameSize ?? { width: 700, height: 350 },
   );
   const [isProjectActive, setIsProjectActive] = useState(
-    initial?.isProjectActive ?? false
+    initial?.isProjectActive ?? false,
   );
 
   // Multi-select action: Figma Shift+click behavior
@@ -95,7 +101,7 @@ export function EditorProvider({ children, initial }: EditorProviderProps) {
           setSelectedLayerId(next.length > 0 ? next[0] : null);
           // Sync layer active flags so the LayerPanel shows all selected layers
           setLayers((prevLayers) =>
-            prevLayers.map((l) => ({ ...l, active: next.includes(l.id) }))
+            prevLayers.map((l) => ({ ...l, active: next.includes(l.id) })),
           );
           return next;
         });
@@ -105,11 +111,11 @@ export function EditorProvider({ children, initial }: EditorProviderProps) {
         setSelectedLayerId(id);
         // Only this layer is active in the sidebar
         setLayers((prevLayers) =>
-          prevLayers.map((l) => ({ ...l, active: l.id === id }))
+          prevLayers.map((l) => ({ ...l, active: l.id === id })),
         );
       }
     },
-    [setLayers]
+    [setLayers],
   );
 
   // Clear all selection: Figma click-on-empty-canvas

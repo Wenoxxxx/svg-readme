@@ -46,7 +46,7 @@ describe("Export feature", () => {
         >
           <EditorInner />
         </EditorProvider>
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     // Click "Export SVG" button in the top navigation bar
@@ -55,7 +55,7 @@ describe("Export feature", () => {
     // Verify downloadSvg was called with the SVG string and default filename
     expect(downloadSvg).toHaveBeenCalledWith(
       expect.stringContaining("<svg>mocked-banner</svg>"),
-      "banner.svg"
+      "banner.svg",
     );
   });
 });

@@ -4,7 +4,7 @@ import type { TextElementProperties } from "../../../components/editor-canvas/El
 
 /** Factory for text element properties */
 function makeTextProps(
-  overrides?: Partial<TextElementProperties>
+  overrides?: Partial<TextElementProperties>,
 ): TextElementProperties {
   return {
     type: "text",

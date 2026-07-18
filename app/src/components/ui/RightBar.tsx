@@ -1,7 +1,6 @@
-
 interface RightBarProps {
   className?: string;
-} 
+}
 
 export default function RightBar({ className }: RightBarProps) {
   return (

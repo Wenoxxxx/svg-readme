@@ -1,5 +1,12 @@
 import { useEffect } from "react";
-import { Type, Image as ImageIcon, Square, PenTool, Maximize, MousePointer2 } from "lucide-react";
+import {
+  Type,
+  Image as ImageIcon,
+  Square,
+  PenTool,
+  Maximize,
+  MousePointer2,
+} from "lucide-react";
 import LayerPanel from "../editor-sidebar/LayerPanel";
 import type { LayerType } from "../editor-sidebar/LayerPanel";
 import FramePanel from "../editor-sidebar/FramePanel";
@@ -17,8 +24,6 @@ import {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const TEMP_PROJECT_ID = "00000000-0000-0000-0000-000000000001";
-
-const fallbackLayers: LayerType[] = [];
 
 const toolList: { id: string; icon: React.ReactNode; name: string }[] = [
   { id: "move", icon: <MousePointer2 className="w-4 h-4" />, name: "Move" },
@@ -47,24 +52,24 @@ interface EditorSidebarProps {
   onToolSelect?: (tool: EditorTool) => void;
 }
 
-export default function EditorSidebar({ frameSize, setFrameSize, onToolSelect }: EditorSidebarProps) {
-  const {
-    activeTool,
-    layers,
-    setLayers,
-  } = useEditor();
+export default function EditorSidebar({
+  frameSize,
+  setFrameSize,
+  onToolSelect,
+}: EditorSidebarProps) {
+  const { activeTool, layers, setLayers } = useEditor();
   const projectId = TEMP_PROJECT_ID;
 
   // ── Fetch layers on mount ──────────────────────────────────────────────────
   useEffect(() => {
     getLayers(projectId)
-      .then(fetched => {
+      .then((fetched) => {
         if (fetched.length > 0) {
           setLayers(fetched.map(toLayerType));
         }
       })
       .catch(console.error);
-  }, [projectId]);
+  }, [projectId, setLayers]);
 
   // ── Tool click handler ──────────────────────────────────────────────────────
   const handleToolClick = (toolId: string) => {
@@ -75,12 +80,18 @@ export default function EditorSidebar({ frameSize, setFrameSize, onToolSelect }:
 
   // ── Layer callbacks (called by LayerPanel after optimistic updates) ────────
   const handleLayerAdd = (layer: LayerType, insertIndex: number) => {
-    createLayer(projectId, { id: layer.id, name: layer.name, orderIndex: insertIndex })
+    createLayer(projectId, {
+      id: layer.id,
+      name: layer.name,
+      orderIndex: insertIndex,
+    })
       .then(() => {
         // After successfully creating, we can optionally trigger a reorder sync for the other layers
-        setLayers(prev => {
-          reorderLayers(projectId, prev.map((l, i) => ({ id: l.id, orderIndex: i })))
-            .catch(console.error);
+        setLayers((prev) => {
+          reorderLayers(
+            projectId,
+            prev.map((l, i) => ({ id: l.id, orderIndex: i })),
+          ).catch(console.error);
           return prev;
         });
       })
@@ -103,7 +114,9 @@ export default function EditorSidebar({ frameSize, setFrameSize, onToolSelect }:
     updateLayer(projectId, id, { isLocked }).catch(console.error);
   };
 
-  const handleLayerReorder = (ordered: { id: string; orderIndex: number }[]) => {
+  const handleLayerReorder = (
+    ordered: { id: string; orderIndex: number }[],
+  ) => {
     reorderLayers(projectId, ordered).catch(console.error);
   };
 
@@ -117,10 +130,11 @@ export default function EditorSidebar({ frameSize, setFrameSize, onToolSelect }:
               key={tool.id}
               onClick={() => handleToolClick(tool.id)}
               title={tool.name}
-              className={`p-2.5 rounded-md flex items-center justify-center transition-all ${activeTool === tool.id
-                ? 'bg-blue-600/20 text-blue-400'
-                : 'text-zinc-400 hover:text-zinc-100 hover:bg-white/5'
-                }`}
+              className={`p-2.5 rounded-md flex items-center justify-center transition-all ${
+                activeTool === tool.id
+                  ? "bg-blue-600/20 text-blue-400"
+                  : "text-zinc-400 hover:text-zinc-100 hover:bg-white/5"
+              }`}
             >
               {tool.icon}
             </button>
@@ -129,7 +143,7 @@ export default function EditorSidebar({ frameSize, setFrameSize, onToolSelect }:
       </div>
 
       {/* Conditional Panels */}
-      {activeTool === 'frame' && (
+      {activeTool === "frame" && (
         <FramePanel frameSize={frameSize} setFrameSize={setFrameSize} />
       )}
 
@@ -149,8 +163,3 @@ export default function EditorSidebar({ frameSize, setFrameSize, onToolSelect }:
 }
 
 // ─── Util ─────────────────────────────────────────────────────────────────────
-
-/** Map current layer array → reorder payload */
-function reorderPayload(layers: LayerType[]) {
-  return layers.map((l, i) => ({ id: l.id, orderIndex: i }));
-}

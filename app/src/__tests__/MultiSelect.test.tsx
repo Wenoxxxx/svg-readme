@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render, screen, act } from "@testing-library/react";
 import {
   EditorProvider,
@@ -12,7 +12,7 @@ import ElementsRenderer from "../components/editor-canvas/ElementsRenderer";
 
 function renderWithProvider(
   ui: React.ReactElement,
-  initial?: Partial<EditorState>
+  initial?: Partial<EditorState>,
 ) {
   return render(<EditorProvider initial={initial}>{ui}</EditorProvider>);
 }
@@ -45,25 +45,19 @@ function MultiSelectTestConsumer() {
       {/* Add layers */}
       <button
         data-testid="addLayer1"
-        onClick={() =>
-          ctx.setLayers((prev) => [...prev, makeLayer("layer-1")])
-        }
+        onClick={() => ctx.setLayers((prev) => [...prev, makeLayer("layer-1")])}
       >
         Add Layer 1
       </button>
       <button
         data-testid="addLayer2"
-        onClick={() =>
-          ctx.setLayers((prev) => [...prev, makeLayer("layer-2")])
-        }
+        onClick={() => ctx.setLayers((prev) => [...prev, makeLayer("layer-2")])}
       >
         Add Layer 2
       </button>
       <button
         data-testid="addLayer3"
-        onClick={() =>
-          ctx.setLayers((prev) => [...prev, makeLayer("layer-3")])
-        }
+        onClick={() => ctx.setLayers((prev) => [...prev, makeLayer("layer-3")])}
       >
         Add Layer 3
       </button>
@@ -138,8 +132,12 @@ describe("Shift+click multi-select (Figma reference)", () => {
 
     // Shift+click layer-2 → both should be selected
     act(() => screen.getByTestId("shiftClickLayer2").click());
-    expect(screen.getByTestId("selectedLayerIds").textContent).toContain("layer-1");
-    expect(screen.getByTestId("selectedLayerIds").textContent).toContain("layer-2");
+    expect(screen.getByTestId("selectedLayerIds").textContent).toContain(
+      "layer-1",
+    );
+    expect(screen.getByTestId("selectedLayerIds").textContent).toContain(
+      "layer-2",
+    );
   });
 
   // Figma: Shift+click on an already-selected layer removes it
@@ -153,13 +151,21 @@ describe("Shift+click multi-select (Figma reference)", () => {
     act(() => screen.getByTestId("shiftClickLayer2").click());
 
     // Both should be selected initially
-    expect(screen.getByTestId("selectedLayerIds").textContent).toContain("layer-1");
-    expect(screen.getByTestId("selectedLayerIds").textContent).toContain("layer-2");
+    expect(screen.getByTestId("selectedLayerIds").textContent).toContain(
+      "layer-1",
+    );
+    expect(screen.getByTestId("selectedLayerIds").textContent).toContain(
+      "layer-2",
+    );
 
     // Shift+click layer-1 → it should be removed, only layer-2 remains
     act(() => screen.getByTestId("shiftClickLayer1").click());
-    expect(screen.getByTestId("selectedLayerIds").textContent).not.toContain("layer-1");
-    expect(screen.getByTestId("selectedLayerIds").textContent).toContain("layer-2");
+    expect(screen.getByTestId("selectedLayerIds").textContent).not.toContain(
+      "layer-1",
+    );
+    expect(screen.getByTestId("selectedLayerIds").textContent).toContain(
+      "layer-2",
+    );
   });
 
   // Figma: Click without Shift on a layer clears multi-select, selects only that layer
@@ -174,13 +180,21 @@ describe("Shift+click multi-select (Figma reference)", () => {
     act(() => screen.getByTestId("shiftClickLayer2").click());
 
     // Both selected
-    expect(screen.getByTestId("selectedLayerIds").textContent).toContain("layer-1");
-    expect(screen.getByTestId("selectedLayerIds").textContent).toContain("layer-2");
+    expect(screen.getByTestId("selectedLayerIds").textContent).toContain(
+      "layer-1",
+    );
+    expect(screen.getByTestId("selectedLayerIds").textContent).toContain(
+      "layer-2",
+    );
 
     // Click layer-3 without Shift → should replace selection
     act(() => screen.getByTestId("clickLayer3").click());
-    expect(screen.getByTestId("selectedLayerIds").textContent).not.toContain("layer-1");
-    expect(screen.getByTestId("selectedLayerIds").textContent).not.toContain("layer-2");
+    expect(screen.getByTestId("selectedLayerIds").textContent).not.toContain(
+      "layer-1",
+    );
+    expect(screen.getByTestId("selectedLayerIds").textContent).not.toContain(
+      "layer-2",
+    );
     expect(screen.getByTestId("selectedLayerIds").textContent).toBe("layer-3");
   });
 
@@ -194,7 +208,9 @@ describe("Shift+click multi-select (Figma reference)", () => {
     act(() => screen.getByTestId("clickLayer1").click());
     act(() => screen.getByTestId("shiftClickLayer2").click());
 
-    expect(screen.getByTestId("selectedLayerIds").textContent).toContain("layer-1");
+    expect(screen.getByTestId("selectedLayerIds").textContent).toContain(
+      "layer-1",
+    );
 
     // Click empty canvas
     act(() => screen.getByTestId("clickEmptyCanvas").click());
@@ -277,7 +293,7 @@ describe("ElementsRenderer — multi-select highlights (Figma reference)", () =>
 
     const { container } = render(
       <svg>
-         <ElementsRenderer
+        <ElementsRenderer
           layers={layers}
           elementProperties={elementProps}
           selectedLayerIds={["layer-1", "layer-2"]}
@@ -285,7 +301,7 @@ describe("ElementsRenderer — multi-select highlights (Figma reference)", () =>
           onElementMouseDown={() => {}}
           onElementDoubleClick={() => {}}
         />
-      </svg>
+      </svg>,
     );
 
     // Both layers should have blue selection rects
@@ -334,7 +350,7 @@ describe("ElementsRenderer — multi-select highlights (Figma reference)", () =>
           onElementMouseDown={() => {}}
           onElementDoubleClick={() => {}}
         />
-      </svg>
+      </svg>,
     );
 
     const selectionRects = container.querySelectorAll("rect[stroke='#3b82f6']");
