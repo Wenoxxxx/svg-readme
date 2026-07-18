@@ -6,6 +6,8 @@ A full-stack web application for generating animated SVG banners for your GitHub
   <img src="https://raw.githubusercontent.com/Wenoxxxx/svg-readme/main/output/banner.svg" width="100%" alt="Banner preview" />
 </p>
 
+![banner](./banner.svg)
+
 ## Overview
 
 GitHub strips `<script>` tags from anything rendered inline in a README, but an SVG referenced as an external image (`<img src="...">`) is served as a static asset and renders fully in the browser — CSS `@keyframes`, gradients, and all.
