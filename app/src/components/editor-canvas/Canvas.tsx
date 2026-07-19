@@ -1,10 +1,16 @@
 import { useState, useRef, useCallback } from "react";
-import ElementsRenderer, { getTextBoundingBox } from "./ElementsRenderer";
+import ElementsRenderer, {
+  getElementBoundingBox,
+} from "./ElementsRenderer";
 import TextOverlay from "./TextOverlay";
 import {
   MIN_TEXTBOX_SIZE,
+  MIN_SHAPE_SIZE,
+  SHAPE_TOOLS,
+  toolToShapeKind,
   type DragState,
   type TextDragState,
+  type ShapeDragState,
   type RubberBandState,
   type CanvasProps,
 } from "./types";
@@ -20,6 +26,7 @@ export default function Canvas({
   isEditingText,
   elementProperties,
   onCreateText,
+  onCreateShape,
   onSelectLayer,
   onShiftSelectLayer,
   onClearSelection,
@@ -37,6 +44,9 @@ export default function Canvas({
   const [textDragState, setTextDragState] = useState<TextDragState | null>(
     null,
   );
+  const [shapeDragState, setShapeDragState] = useState<ShapeDragState | null>(
+    null,
+  );
   const [rubberBandState, setRubberBandState] =
     useState<RubberBandState | null>(null);
   const [rubberBandHighlightedIds, setRubberBandHighlightedIds] = useState<
@@ -46,6 +56,7 @@ export default function Canvas({
   // ── Cursor ──────────────────────────────────────────────────────────────────
   const getCursor = () => {
     if (activeTool === "text") return "text";
+    if (SHAPE_TOOLS.has(activeTool)) return "crosshair";
     if (dragState) return "grabbing";
     return "default";
   };
@@ -95,6 +106,18 @@ export default function Canvas({
           currentX: coords.x,
           currentY: coords.y,
         });
+      } else if (SHAPE_TOOLS.has(activeTool)) {
+        // Start shape placement drag
+        const kind = toolToShapeKind(activeTool);
+        if (kind) {
+          setShapeDragState({
+            kind,
+            startX: coords.x,
+            startY: coords.y,
+            currentX: coords.x,
+            currentY: coords.y,
+          });
+        }
       }
     },
     [activeTool, isEditingText, getSVGCoords, onCommitText],
@@ -168,6 +191,9 @@ export default function Canvas({
           onEditText(layerId);
         }
       }
+      // Shape tools: clicking on an existing element while a shape tool is
+      // active doesn't do anything special — the canvas drag still creates a
+      // new shape on mousedown/mouseup.
     },
     [
       activeTool,
@@ -211,7 +237,7 @@ export default function Canvas({
         const props = elementProperties[layer.id];
         if (!props) continue;
 
-        const bb = getTextBoundingBox(props);
+        const bb = getElementBoundingBox(props);
         // AABB intersection check
         if (
           bb.x < rx + rw &&
@@ -261,12 +287,19 @@ export default function Canvas({
         setTextDragState((prev) =>
           prev ? { ...prev, currentX: coords.x, currentY: coords.y } : null,
         );
+      } else if (shapeDragState) {
+        // Shape placement drag preview
+        const coords = getSVGCoords(e);
+        setShapeDragState((prev) =>
+          prev ? { ...prev, currentX: coords.x, currentY: coords.y } : null,
+        );
       }
     },
     [
       dragState,
       rubberBandState,
       textDragState,
+      shapeDragState,
       getSVGCoords,
       onMoveElement,
       computeRubberBandElements,
@@ -315,16 +348,42 @@ export default function Canvas({
       }
 
       setTextDragState(null);
+    } else if (shapeDragState) {
+      const dx = shapeDragState.currentX - shapeDragState.startX;
+      const dy = shapeDragState.currentY - shapeDragState.startY;
+
+      // Require a minimum drag distance to place a shape.
+      // A tiny click still places a default-sized shape.
+      const isClick = Math.abs(dx) < 3 && Math.abs(dy) < 3;
+      const DEFAULT_SHAPE_SIZE = 80;
+
+      const finalWidth = isClick
+        ? DEFAULT_SHAPE_SIZE
+        : Math.max(Math.abs(dx), MIN_SHAPE_SIZE);
+      const finalHeight = isClick
+        ? DEFAULT_SHAPE_SIZE
+        : Math.max(Math.abs(dy), MIN_SHAPE_SIZE);
+      const finalX = isClick
+        ? shapeDragState.startX - DEFAULT_SHAPE_SIZE / 2
+        : Math.min(shapeDragState.startX, shapeDragState.currentX);
+      const finalY = isClick
+        ? shapeDragState.startY - DEFAULT_SHAPE_SIZE / 2
+        : Math.min(shapeDragState.startY, shapeDragState.currentY);
+
+      onCreateShape(shapeDragState.kind, finalX, finalY, finalWidth, finalHeight);
+      setShapeDragState(null);
     }
   }, [
     dragState,
     rubberBandState,
     textDragState,
+    shapeDragState,
     computeRubberBandElements,
     onRubberBandSelect,
     onClearSelection,
     onSelectLayer,
     onCreateText,
+    onCreateShape,
   ]);
 
   // ── Rubber-band selection preview rect ──────────────────────────────────────
@@ -357,21 +416,48 @@ export default function Canvas({
     />
   ) : null;
 
+  // ── Shape placement drag preview ─────────────────────────────────────────────
+  const shapeDragPreview = shapeDragState ? (
+    <rect
+      x={Math.min(shapeDragState.startX, shapeDragState.currentX)}
+      y={Math.min(shapeDragState.startY, shapeDragState.currentY)}
+      width={Math.max(
+        Math.abs(shapeDragState.currentX - shapeDragState.startX),
+        1,
+      )}
+      height={Math.max(
+        Math.abs(shapeDragState.currentY - shapeDragState.startY),
+        1,
+      )}
+      fill="rgba(139,92,246,0.12)"
+      stroke="#8b5cf6"
+      strokeWidth={1}
+      strokeDasharray="4 2"
+      rx={2}
+      className="pointer-events-none"
+    />
+  ) : null;
+
   // ── Get editing overlay position ────────────────────────────────────────────
+  const editingProps =
+    editingLayerId && elementProperties[editingLayerId];
+  const editingTextProps =
+    editingProps && editingProps.type === "text" ? editingProps : null;
+
   const editingOverlay =
-    isEditingText && editingLayerId && elementProperties[editingLayerId] ? (
+    isEditingText && editingLayerId && editingTextProps ? (
       <TextOverlay
         layerId={editingLayerId}
         content={editingContent ?? ""}
-        x={elementProperties[editingLayerId].x}
-        y={elementProperties[editingLayerId].y}
-        width={elementProperties[editingLayerId].width}
-        height={elementProperties[editingLayerId].height}
-        fontFamily={elementProperties[editingLayerId].fontFamily}
-        fontSize={elementProperties[editingLayerId].fontSize}
-        fontWeight={elementProperties[editingLayerId].fontWeight}
-        color={elementProperties[editingLayerId].color}
-        textAlign={elementProperties[editingLayerId].textAlign}
+        x={editingTextProps.x}
+        y={editingTextProps.y}
+        width={editingTextProps.width}
+        height={editingTextProps.height}
+        fontFamily={editingTextProps.fontFamily}
+        fontSize={editingTextProps.fontSize}
+        fontWeight={editingTextProps.fontWeight}
+        color={editingTextProps.color}
+        textAlign={editingTextProps.textAlign}
         onChange={onEditingContentChange ?? (() => {})}
         onCommit={onCommitText ?? (() => {})}
       />
@@ -412,6 +498,7 @@ export default function Canvas({
 
         {rubberBandPreview}
         {textDragPreview}
+        {shapeDragPreview}
       </svg>
 
       {/* Text editing overlay (absolutely positioned over SVG) */}

@@ -1,4 +1,4 @@
-import type { TextElementProperties } from "../components/editor-canvas/ElementsRenderer";
+import type { ElementProperties, ShapeElementProperties } from "../components/editor-canvas/ElementsRenderer";
 import type { LayerType } from "../context/EditorContext";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -17,11 +17,77 @@ const escXml = (s: string) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
 
+// ─── Shape path helpers ───────────────────────────────────────────────────────
+
+function trianglePath(x: number, y: number, w: number, h: number): string {
+  return `M ${x + w / 2} ${y} L ${x + w} ${y + h} L ${x} ${y + h} Z`;
+}
+
+function starPath(x: number, y: number, w: number, h: number): string {
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  const outerR = Math.min(w, h) / 2;
+  const innerR = outerR * 0.4;
+  const points: string[] = [];
+  for (let i = 0; i < 10; i++) {
+    const angle = (Math.PI / 5) * i - Math.PI / 2;
+    const r = i % 2 === 0 ? outerR : innerR;
+    points.push(`${cx + r * Math.cos(angle)},${cy + r * Math.sin(angle)}`);
+  }
+  return `M ${points.join(" L ")} Z`;
+}
+
+function hexagonPath(x: number, y: number, w: number, h: number): string {
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  const rx = w / 2;
+  const ry = h / 2;
+  const points: string[] = [];
+  for (let i = 0; i < 6; i++) {
+    const angle = (Math.PI / 3) * i - Math.PI / 6;
+    points.push(
+      `${cx + rx * Math.cos(angle)},${cy + ry * Math.sin(angle)}`,
+    );
+  }
+  return `M ${points.join(" L ")} Z`;
+}
+
+function renderShapeToSvgString(props: ShapeElementProperties): string {
+  const { kind, x, y, width, height, fill, stroke, strokeWidth, opacity } =
+    props;
+  const strokeAttr = stroke ? ` stroke="${stroke}" stroke-width="${strokeWidth}"` : "";
+  const opacityAttr = opacity !== 1 ? ` opacity="${opacity}"` : "";
+
+  if (kind === "rect") {
+    return `    <rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${fill}"${strokeAttr}${opacityAttr} rx="4"/>`;
+  }
+  if (kind === "circle") {
+    const rx = width / 2;
+    const ry = height / 2;
+    return `    <ellipse cx="${x + rx}" cy="${y + ry}" rx="${rx}" ry="${ry}" fill="${fill}"${strokeAttr}${opacityAttr}/>`;
+  }
+  if (kind === "triangle") {
+    return `    <path d="${trianglePath(x, y, width, height)}" fill="${fill}"${strokeAttr}${opacityAttr}/>`;
+  }
+  if (kind === "star") {
+    return `    <path d="${starPath(x, y, width, height)}" fill="${fill}"${strokeAttr}${opacityAttr}/>`;
+  }
+  if (kind === "hexagon") {
+    return `    <path d="${hexagonPath(x, y, width, height)}" fill="${fill}"${strokeAttr}${opacityAttr}/>`;
+  }
+  if (kind === "line") {
+    const midY = y + height / 2;
+    const lineStroke = stroke || fill;
+    return `    <line x1="${x}" y1="${midY}" x2="${x + width}" y2="${midY}" stroke="${lineStroke}" stroke-width="${Math.max(strokeWidth, 2)}"${opacityAttr}/>`;
+  }
+  return "";
+}
+
 // ─── Build SVG string ────────────────────────────────────────────────────────
 
 export interface BuildSvgOptions {
   frameSize: { width: number; height: number };
-  elementProperties: Record<string, TextElementProperties>;
+  elementProperties: Record<string, ElementProperties>;
   layers: LayerType[];
   /** Background color for the canvas (default: #09090b) */
   backgroundColor?: string;
@@ -46,25 +112,30 @@ export function buildSvgString(options: BuildSvgOptions): string {
 
   const { width: w, height: h } = frameSize;
 
-  // Collect visible text elements
-  const textElements: string[] = [];
+  // Collect visible elements (shapes first, then text on top)
+  const elementStrings: string[] = [];
 
   for (const layer of layers) {
     if (!layer.visible) continue;
 
     const props = elementProperties[layer.id];
-    if (!props || props.type !== "text") continue;
-    if (!props.content.trim()) continue;
+    if (!props) continue;
 
-    const anchor = TEXT_ANCHOR_MAP[props.textAlign] ?? "start";
-    const fill = props.color;
-    const family = props.fontFamily;
-    const size = props.fontSize;
-    const weight = props.fontWeight;
+    if (props.type === "shape") {
+      elementStrings.push(renderShapeToSvgString(props));
+    } else if (props.type === "text") {
+      if (!props.content.trim()) continue;
 
-    textElements.push(
-      `    <text x="${props.x}" y="${props.y}" font-family="${family}" font-size="${size}" font-weight="${weight}" fill="${fill}" text-anchor="${anchor}">${escXml(props.content)}</text>`,
-    );
+      const anchor = TEXT_ANCHOR_MAP[props.textAlign] ?? "start";
+      const fill = props.color;
+      const family = props.fontFamily;
+      const size = props.fontSize;
+      const weight = props.fontWeight;
+
+      elementStrings.push(
+        `    <text x="${props.x}" y="${props.y}" font-family="${family}" font-size="${size}" font-weight="${weight}" fill="${fill}" text-anchor="${anchor}">${escXml(props.content)}</text>`,
+      );
+    }
   }
 
   // Build the SVG
@@ -89,7 +160,7 @@ export function buildSvgString(options: BuildSvgOptions): string {
       <circle cx="2" cy="2" r="1" fill="white"/>
     </pattern>
   </defs>
-${textElements.join("\n")}
+${elementStrings.join("\n")}
 </svg>`;
 }
 

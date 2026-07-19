@@ -17,7 +17,18 @@ export type LayerType = {
   active?: boolean;
 };
 
-export type EditorTool = "move" | "text" | "frame" | "pen" | "rect" | "image";
+export type EditorTool =
+  | "move"
+  | "text"
+  | "frame"
+  | "pen"
+  | "rect"
+  | "circle"
+  | "triangle"
+  | "star"
+  | "hexagon"
+  | "line"
+  | "image";
 
 export interface EditorState {
   activeTool: EditorTool;

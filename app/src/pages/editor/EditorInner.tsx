@@ -3,7 +3,7 @@ import EditorLayout from "../../layouts/EditorLayout";
 import { useEditor } from "../../context/EditorContext";
 import type { EditorTool, LayerType } from "../../context/EditorContext";
 import Canvas from "../../components/editor-canvas/Canvas";
-import type { TextElementProperties } from "../../components/editor-canvas/ElementsRenderer";
+import type { TextElementProperties, ShapeElementProperties, ElementProperties, ShapeKind } from "../../components/editor-canvas/ElementsRenderer";
 import { createLayer } from "../../lib/api";
 import {
   buildSvgString,
@@ -16,13 +16,13 @@ import {
 
 interface ClipboardState {
   layers: LayerType[];
-  elementProperties: Record<string, TextElementProperties>;
+  elementProperties: Record<string, ElementProperties>;
 }
 
 interface HistoryAction {
   type: "CREATE" | "DELETE" | "MOVE" | "UPDATE" | "PASTE";
   layers: LayerType[];
-  elementProperties: Record<string, TextElementProperties>;
+  elementProperties: Record<string, ElementProperties>;
   selectedLayerIds: string[];
 }
 
@@ -60,9 +60,9 @@ export function EditorInner() {
   const [customWidth, setCustomWidth] = useState("800");
   const [customHeight, setCustomHeight] = useState("200");
 
-  // Track element properties (position, styling for each layer)
+  // Track element properties (position, styling for each layer — text or shape)
   const [elementProperties, setElementProperties] = useState<
-    Record<string, TextElementProperties>
+    Record<string, ElementProperties>
   >({});
 
   // Text editing state
@@ -440,6 +440,59 @@ export function EditorInner() {
     [elementProperties, setIsEditingText, setSelectedLayerId],
   );
 
+  // ── Create shape element ────────────────────────────────────────────────────
+  const handleCreateShape = useCallback(
+    (
+      kind: ShapeKind,
+      x: number,
+      y: number,
+      width: number,
+      height: number,
+    ) => {
+      const tempId = `shape-${Date.now()}`;
+
+      const kindName = kind.charAt(0).toUpperCase() + kind.slice(1);
+
+      const newLayer: LayerType = {
+        id: tempId,
+        name: kindName,
+        type: "shape",
+        locked: false,
+        visible: true,
+        active: true,
+      };
+
+      const newProps: ShapeElementProperties = {
+        type: "shape",
+        kind,
+        x,
+        y,
+        width,
+        height,
+        fill: "#8b5cf6",
+        stroke: "rgba(255,255,255,0.2)",
+        strokeWidth: 1,
+        opacity: 1,
+      };
+
+      saveToHistory("CREATE");
+      selectLayer(tempId, false);
+      setLayers((prev) =>
+        prev.map((l) => ({ ...l, active: false })).concat(newLayer),
+      );
+      setElementProperties((prev) => ({ ...prev, [tempId]: newProps }));
+
+      // Switch back to move tool after placing shape (matches Figma UX)
+      setActiveTool("move");
+
+      // Persist to backend (fire-and-forget)
+      createLayer(TEMP_PROJECT_ID, { name: newLayer.name }).catch(
+        console.error,
+      );
+    },
+    [saveToHistory, selectLayer, setLayers, setActiveTool],
+  );
+
   // ── Move element ──────────────────────────────────────────────────────────
   const handleMoveElement = useCallback((id: string, x: number, y: number) => {
     setElementProperties((prev) => ({
@@ -677,6 +730,7 @@ export function EditorInner() {
             isEditingText={isEditingText}
             elementProperties={elementProperties}
             onCreateText={handleCreateText}
+            onCreateShape={handleCreateShape}
             onSelectLayer={handleSelectLayer}
             onShiftSelectLayer={handleShiftSelectLayer}
             onClearSelection={handleClearSelection}

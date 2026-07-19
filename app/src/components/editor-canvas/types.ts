@@ -1,9 +1,10 @@
 import type { LayerType, EditorTool } from "../../context/EditorContext";
-import type { TextElementProperties } from "./ElementsRenderer";
+import type { TextElementProperties, ElementProperties, ShapeKind } from "./ElementsRenderer";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 export const MIN_TEXTBOX_SIZE = 20;
+export const MIN_SHAPE_SIZE = 10;
 
 export const DEFAULT_TEXT_PROPS: Omit<
   TextElementProperties,
@@ -18,6 +19,31 @@ export const DEFAULT_TEXT_PROPS: Omit<
   color: "#ffffff",
   textAlign: "left",
 };
+
+/** Tool IDs that are shape-placement tools */
+export const SHAPE_TOOLS = new Set<EditorTool>([
+  "rect",
+  "circle",
+  "triangle",
+  "star",
+  "hexagon",
+  "line",
+]);
+
+/** Map from a shape EditorTool to its ShapeKind */
+export function toolToShapeKind(tool: EditorTool): ShapeKind | null {
+  if (
+    tool === "rect" ||
+    tool === "circle" ||
+    tool === "triangle" ||
+    tool === "star" ||
+    tool === "hexagon" ||
+    tool === "line"
+  ) {
+    return tool;
+  }
+  return null;
+}
 
 // ─── Drag types ───────────────────────────────────────────────────────────────
 
@@ -36,6 +62,15 @@ export interface DragState {
 
 /** State for dragging to create a text box */
 export interface TextDragState {
+  startX: number;
+  startY: number;
+  currentX: number;
+  currentY: number;
+}
+
+/** State for dragging to create a shape */
+export interface ShapeDragState {
+  kind: ShapeKind;
   startX: number;
   startY: number;
   currentX: number;
@@ -62,12 +97,20 @@ export interface CanvasProps {
   selectedLayerId: string | null;
   selectedLayerIds: string[];
   isEditingText: boolean;
-  elementProperties: Record<string, TextElementProperties>;
+  elementProperties: Record<string, ElementProperties>;
   /** Called when user clicks on canvas (text tool) to create text */
   onCreateText: (
     x: number,
     y: number,
     width: number | "auto",
+    height: number,
+  ) => void;
+  /** Called when user drags on canvas (shape tool) to place a shape */
+  onCreateShape: (
+    kind: ShapeKind,
+    x: number,
+    y: number,
+    width: number,
     height: number,
   ) => void;
   /** Called when an element is selected */
