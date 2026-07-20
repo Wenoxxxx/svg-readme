@@ -13,6 +13,7 @@ import {
   type ShapeDragState,
   type RubberBandState,
   type CanvasProps,
+  type ResizeState,
 } from "./types";
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -37,6 +38,8 @@ export default function Canvas({
   editingLayerId,
   onEditingContentChange,
   onCommitText,
+  onResizeStart,
+  onResizeElement,
   children,
 }: CanvasProps) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -52,12 +55,20 @@ export default function Canvas({
   const [rubberBandHighlightedIds, setRubberBandHighlightedIds] = useState<
     string[]
   >([]);
+  const [resizeState, setResizeState] = useState<ResizeState | null>(null);
+
+  const selectedId =
+    selectedLayerIds && selectedLayerIds.length > 0
+      ? (selectedLayerIds.length === 1 ? selectedLayerIds[0] : null)
+      : (selectedLayerId || null);
+  const selectedProps = selectedId ? elementProperties[selectedId] : null;
 
   // ── Cursor ──────────────────────────────────────────────────────────────────
   const getCursor = () => {
     if (activeTool === "text") return "text";
     if (SHAPE_TOOLS.has(activeTool)) return "crosshair";
     if (dragState) return "grabbing";
+    if (resizeState) return getHandleCursor(resizeState.handle);
     return "default";
   };
 
@@ -121,6 +132,42 @@ export default function Canvas({
       }
     },
     [activeTool, isEditingText, getSVGCoords, onCommitText],
+  );
+
+  // ── Handle resize handle mousedown ─────────────────────────────────────────
+  const handleResizeMouseDown = useCallback(
+    (
+      e: React.MouseEvent,
+      handle: "tl" | "tc" | "tr" | "ml" | "mr" | "bl" | "bc" | "br",
+    ) => {
+      e.stopPropagation();
+      if (isEditingText) {
+        onCommitText?.();
+      }
+
+      if (selectedId && selectedProps && selectedProps.type === "shape") {
+        onResizeStart?.();
+        const coords = getSVGCoords(e);
+        setResizeState({
+          elementId: selectedId,
+          handle,
+          startX: coords.x,
+          startY: coords.y,
+          initialX: selectedProps.x,
+          initialY: selectedProps.y,
+          initialWidth: selectedProps.width,
+          initialHeight: selectedProps.height,
+        });
+      }
+    },
+    [
+      selectedId,
+      selectedProps,
+      isEditingText,
+      onCommitText,
+      onResizeStart,
+      getSVGCoords,
+    ],
   );
 
   // ── Element mouse down (for move tool selection/drag) ──────────────────────
@@ -256,7 +303,67 @@ export default function Canvas({
   // ── Mouse move handler ─────────────────────────────────────────────────────
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
-      if (dragState) {
+      if (resizeState) {
+        const coords = getSVGCoords(e);
+        const dx = coords.x - resizeState.startX;
+        const dy = coords.y - resizeState.startY;
+
+        const {
+          handle,
+          initialX,
+          initialY,
+          initialWidth,
+          initialHeight,
+          elementId,
+        } = resizeState;
+
+        let newX = initialX;
+        let newY = initialY;
+        let newWidth = initialWidth;
+        let newHeight = initialHeight;
+
+        const minW = MIN_SHAPE_SIZE;
+        const minH = MIN_SHAPE_SIZE;
+
+        switch (handle) {
+          case "br":
+            newWidth = Math.max(initialWidth + dx, minW);
+            newHeight = Math.max(initialHeight + dy, minH);
+            break;
+          case "mr":
+            newWidth = Math.max(initialWidth + dx, minW);
+            break;
+          case "bc":
+            newHeight = Math.max(initialHeight + dy, minH);
+            break;
+          case "tl":
+            newWidth = Math.max(initialWidth - dx, minW);
+            newHeight = Math.max(initialHeight - dy, minH);
+            newX = initialX + (initialWidth - newWidth);
+            newY = initialY + (initialHeight - newHeight);
+            break;
+          case "ml":
+            newWidth = Math.max(initialWidth - dx, minW);
+            newX = initialX + (initialWidth - newWidth);
+            break;
+          case "tc":
+            newHeight = Math.max(initialHeight - dy, minH);
+            newY = initialY + (initialHeight - newHeight);
+            break;
+          case "tr":
+            newWidth = Math.max(initialWidth + dx, minW);
+            newHeight = Math.max(initialHeight - dy, minH);
+            newY = initialY + (initialHeight - newHeight);
+            break;
+          case "bl":
+            newWidth = Math.max(initialWidth - dx, minW);
+            newHeight = Math.max(initialHeight + dy, minH);
+            newX = initialX + (initialWidth - newWidth);
+            break;
+        }
+
+        onResizeElement?.(elementId, newX, newY, newWidth, newHeight);
+      } else if (dragState) {
         if (dragState.multiStartPositions) {
           // Multi-drag: move all selected layers by the same delta
           const dx = e.clientX - dragState.startX;
@@ -296,19 +403,23 @@ export default function Canvas({
       }
     },
     [
+      resizeState,
       dragState,
       rubberBandState,
       textDragState,
       shapeDragState,
       getSVGCoords,
       onMoveElement,
+      onResizeElement,
       computeRubberBandElements,
     ],
   );
 
   // ── Mouse up handler ───────────────────────────────────────────────────────
   const handleMouseUp = useCallback(() => {
-    if (dragState) {
+    if (resizeState) {
+      setResizeState(null);
+    } else if (dragState) {
       setDragState(null);
     } else if (rubberBandState) {
       const dx = rubberBandState.currentX - rubberBandState.startX;
@@ -374,6 +485,7 @@ export default function Canvas({
       setShapeDragState(null);
     }
   }, [
+    resizeState,
     dragState,
     rubberBandState,
     textDragState,
@@ -463,6 +575,46 @@ export default function Canvas({
       />
     ) : null;
 
+  const showResizeOverlay =
+    activeTool === "move" &&
+    selectedId &&
+    selectedProps &&
+    selectedProps.type === "shape";
+
+  const renderHandle = (
+    hx: number,
+    hy: number,
+    handleName: "tl" | "tc" | "tr" | "ml" | "mr" | "bl" | "bc" | "br",
+  ) => {
+    const visualSize = 6;
+    const hitSize = 14;
+    const cursor = getHandleCursor(handleName);
+
+    return (
+      <g key={handleName} className="resize-handle-group">
+        <rect
+          x={hx - visualSize / 2}
+          y={hy - visualSize / 2}
+          width={visualSize}
+          height={visualSize}
+          fill="white"
+          stroke="#3b82f6"
+          strokeWidth={1.5}
+          className="pointer-events-none"
+        />
+        <rect
+          x={hx - hitSize / 2}
+          y={hy - hitSize / 2}
+          width={hitSize}
+          height={hitSize}
+          fill="transparent"
+          style={{ cursor }}
+          onMouseDown={(e) => handleResizeMouseDown(e, handleName)}
+        />
+      </g>
+    );
+  };
+
   return (
     <div className="relative">
       <svg
@@ -496,6 +648,60 @@ export default function Canvas({
           onElementDoubleClick={handleElementDoubleClick}
         />
 
+        {/* Resize Handles Overlay */}
+        {showResizeOverlay && (
+          <g className="resize-overlay">
+            {/* Bounding box outline */}
+            <rect
+              x={selectedProps.x}
+              y={selectedProps.y}
+              width={selectedProps.width}
+              height={selectedProps.height}
+              fill="none"
+              stroke="#3b82f6"
+              strokeWidth={1}
+              className="pointer-events-none"
+            />
+            {/* 8 Handles */}
+            {renderHandle(selectedProps.x, selectedProps.y, "tl")}
+            {renderHandle(
+              selectedProps.x + selectedProps.width / 2,
+              selectedProps.y,
+              "tc",
+            )}
+            {renderHandle(
+              selectedProps.x + selectedProps.width,
+              selectedProps.y,
+              "tr",
+            )}
+            {renderHandle(
+              selectedProps.x,
+              selectedProps.y + selectedProps.height / 2,
+              "ml",
+            )}
+            {renderHandle(
+              selectedProps.x + selectedProps.width,
+              selectedProps.y + selectedProps.height / 2,
+              "mr",
+            )}
+            {renderHandle(
+              selectedProps.x,
+              selectedProps.y + selectedProps.height,
+              "bl",
+            )}
+            {renderHandle(
+              selectedProps.x + selectedProps.width / 2,
+              selectedProps.y + selectedProps.height,
+              "bc",
+            )}
+            {renderHandle(
+              selectedProps.x + selectedProps.width,
+              selectedProps.y + selectedProps.height,
+              "br",
+            )}
+          </g>
+        )}
+
         {rubberBandPreview}
         {textDragPreview}
         {shapeDragPreview}
@@ -506,3 +712,13 @@ export default function Canvas({
     </div>
   );
 }
+
+const getHandleCursor = (
+  handle: "tl" | "tc" | "tr" | "ml" | "mr" | "bl" | "bc" | "br",
+) => {
+  if (handle === "tl" || handle === "br") return "nwse-resize";
+  if (handle === "tr" || handle === "bl") return "nesw-resize";
+  if (handle === "tc" || handle === "bc") return "ns-resize";
+  if (handle === "ml" || handle === "mr") return "ew-resize";
+  return "default";
+};
