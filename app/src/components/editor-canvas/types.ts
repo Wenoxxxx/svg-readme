@@ -87,6 +87,18 @@ export interface RubberBandState {
   addToExisting: boolean;
 }
 
+/** State for resizing an element */
+export interface ResizeState {
+  elementId: string;
+  handle: "tl" | "tc" | "tr" | "ml" | "mr" | "bl" | "bc" | "br";
+  startX: number;
+  startY: number;
+  initialX: number;
+  initialY: number;
+  initialWidth: number;
+  initialHeight: number;
+}
+
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 /** Props for the Canvas component */
@@ -127,6 +139,16 @@ export interface CanvasProps {
   onRubberBandSelect?: (ids: string[], addToExisting: boolean) => void;
   /** Called when an element is dragged to a new position */
   onMoveElement: (id: string, x: number, y: number) => void;
+  /** Called when an element begins resizing */
+  onResizeStart?: () => void;
+  /** Called when an element is resized */
+  onResizeElement?: (
+    id: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ) => void;
   /** Called when editing state changes */
   onEditingChange: (editing: boolean) => void;
   /** Called when user wants to edit existing text */

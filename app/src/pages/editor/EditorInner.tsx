@@ -501,6 +501,32 @@ export function EditorInner() {
     }));
   }, []);
 
+  // ── Resize element ────────────────────────────────────────────────────────
+  const handleResizeElement = useCallback(
+    (id: string, x: number, y: number, width: number, height: number) => {
+      setElementProperties((prev) => {
+        const props = prev[id];
+        if (!props) return prev;
+        return {
+          ...prev,
+          [id]: {
+            ...props,
+            x,
+            y,
+            width,
+            height,
+          },
+        };
+      });
+    },
+    [],
+  );
+
+  // ── Resize start (saves state to history) ──────────────────────────────────
+  const handleResizeStart = useCallback(() => {
+    saveToHistory("RESIZE");
+  }, [saveToHistory]);
+
   // ── Tool change handler (commits text if editing, then switches) ──────────
   const handleToolChange = useCallback(
     (tool: EditorTool) => {
@@ -736,6 +762,8 @@ export function EditorInner() {
             onClearSelection={handleClearSelection}
             onRubberBandSelect={handleRubberBandSelect}
             onMoveElement={handleMoveElement}
+            onResizeStart={handleResizeStart}
+            onResizeElement={handleResizeElement}
             onEditingChange={setIsEditingText}
             onEditText={handleEditText}
             editingContent={editingContent}
