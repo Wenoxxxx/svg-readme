@@ -7,7 +7,7 @@ import EditorRightBar from "../components/ui/EditorRightBar";
 import type { EditorTool } from "../context/EditorContext";
 import { type FrameSize } from "../components/editor-sidebar/FramePanel";
 import type { ElementProperties } from "../components/editor-canvas/ElementsRenderer";
-import type { DocumentState } from "../lib/persistence";
+import type { DocumentState } from "../lib/designFile";
 
 interface EditorLayoutProps {
   children: ReactNode;

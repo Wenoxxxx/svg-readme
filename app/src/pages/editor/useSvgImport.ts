@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from "react";
 import type { LayerType } from "../../context/EditorContext";
 import type { ElementProperties } from "../../components/editor-canvas/ElementsRenderer";
 import { parseSvgMarkup } from "../../lib/importSvg";
+import { parseDesignJson, DesignFileError } from "../../lib/designFile";
 
 export interface SvgImportParams {
   saveToHistory: () => void;
@@ -9,6 +10,14 @@ export interface SvgImportParams {
   setElementProperties: React.Dispatch<React.SetStateAction<Record<string, ElementProperties>>>;
   setSelectedLayerIds: React.Dispatch<React.SetStateAction<string[]>>;
   setSelectedLayerId: (id: string | null) => void;
+}
+
+function isDesignFile(name: string, type: string): boolean {
+  return name.endsWith(".json") || type === "application/json";
+}
+
+function isSvgFile(name: string, type: string): boolean {
+  return name.endsWith(".svg") || type === "image/svg+xml";
 }
 
 export function useSvgImport(params: SvgImportParams) {
@@ -58,7 +67,24 @@ export function useSvgImport(params: SvgImportParams) {
       setIsDragOver(false);
 
       const files = Array.from(e.dataTransfer.files);
-      const svgFiles = files.filter((f) => f.name.endsWith(".svg") || f.type === "image/svg+xml");
+
+      // Design JSON files replace the whole document (first match wins).
+      const designFile = files.find((f) => isDesignFile(f.name, f.type));
+      if (designFile) {
+        try {
+          const text = await designFile.text();
+          const { doc, name } = parseDesignJson(text);
+          window.dispatchEvent(new CustomEvent("open-design", { detail: { doc, name } }));
+        } catch (err) {
+          console.error(
+            "Failed to import design:",
+            err instanceof DesignFileError ? err.message : err,
+          );
+        }
+        return;
+      }
+
+      const svgFiles = files.filter((f) => isSvgFile(f.name, f.type));
       if (svgFiles.length === 0) return;
 
       for (const file of svgFiles) {
@@ -82,7 +108,13 @@ export function useSvgImport(params: SvgImportParams) {
         }
       }
     },
-    [saveToHistory, setLayers, setElementProperties, setSelectedLayerIds, setSelectedLayerId],
+    [
+      saveToHistory,
+      setLayers,
+      setElementProperties,
+      setSelectedLayerIds,
+      setSelectedLayerId,
+    ],
   );
 
   return {

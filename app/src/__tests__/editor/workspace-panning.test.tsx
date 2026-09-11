@@ -7,24 +7,16 @@ import {
 } from "../../context/EditorContext";
 import { EditorInner } from "../../pages/editor/EditorInner";
 
-// Mock the API module
-vi.mock("../../lib/api", () => ({
-  createLayer: vi.fn().mockResolvedValue({}),
-  getLayers: vi.fn().mockResolvedValue([]),
-  updateLayer: vi.fn().mockResolvedValue({}),
-  deleteLayer: vi.fn().mockResolvedValue({}),
-  reorderLayers: vi.fn().mockResolvedValue({}),
-}));
-
-// Mock persistence modules
+// Mock persistence modules (local-only API)
 vi.mock("../../lib/persistence", () => ({
   onSaveStatus: vi.fn(() => () => {}),
   saveDocument: vi.fn(),
   saveNewProject: vi.fn(),
-  loadProject: vi.fn(),
-  fetchProjectList: vi.fn().mockResolvedValue([]),
-  removeProject: vi.fn(),
+  adoptDocumentAsSaved: vi.fn(),
+  autosave: vi.fn(),
   flushAutosave: vi.fn(),
+  resetPersistence: vi.fn(),
+  setCurrentProjectId: vi.fn(),
 }));
 
 function renderEditor(initial?: Partial<EditorState>) {

@@ -13,7 +13,6 @@ import type { TextElementProperties, ShapeElementProperties, ImageElementPropert
 import { rescalePoints } from "../../lib/editor/pathUtils";
 import { DEFAULT_TEXT_PROPS, DEFAULT_TEXT_HEIGHT } from "../../components/editor-canvas/types";
 import { computeAutoSize } from "../../lib/editor/textMeasure";
-import { createLayer } from "../../lib/api";
 import { ShortcutGrid } from "./EditorInnerShortcuts";
 
 // ── Extracted hooks ───────────────────────────────────────────────────────────
@@ -22,10 +21,6 @@ import { useEditorClipboard } from "./hooks/useEditorClipboard";
 import { useEditorExport } from "./hooks/useEditorExport";
 import { useEditorPersistence } from "./hooks/useEditorPersistence";
 import { usePathVertexEditing } from "./hooks/usePathVertexEditing";
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const TEMP_PROJECT_ID = "00000000-0000-0000-0000-000000000001";
 
 // ─── Inner component that uses context ────────────────────────────────────────
 
@@ -234,7 +229,6 @@ export function EditorInner() {
     setEditingContent("");
     setIsEditingText(true);
     setActiveTool("move");
-    createLayer(TEMP_PROJECT_ID, { name: newLayer.name }).catch(console.error);
   }, [setLayers, setElementProperties, setIsEditingText, setActiveTool, selectLayer]);
 
   const handleEditText = useCallback((layerId: string) => {
@@ -261,7 +255,6 @@ export function EditorInner() {
     setLayers((prev) => [...prev.map((l) => ({ ...l, active: false })), newLayer] as typeof prev);
     setElementProperties((prev) => ({ ...prev, [tempId]: newProps }));
     setActiveTool("move");
-    createLayer(TEMP_PROJECT_ID, { name: newLayer.name }).catch(console.error);
   }, [saveToHistory, selectLayer, setLayers, setElementProperties, setActiveTool]);
 
   // ── Create path element ──────────────────────────────────────────────────
@@ -274,7 +267,6 @@ export function EditorInner() {
     setLayers((prev) => [...prev.map((l) => ({ ...l, active: false })), newLayer] as typeof prev);
     setElementProperties((prev) => ({ ...prev, [tempId]: newProps }));
     setActiveTool("move");
-    createLayer(TEMP_PROJECT_ID, { name: newLayer.name }).catch(console.error);
   }, [saveToHistory, selectLayer, setLayers, setElementProperties, setActiveTool]);
 
   const handleAlignmentStart = useCallback(() => { saveToHistory(); }, [saveToHistory]);
@@ -390,7 +382,6 @@ export function EditorInner() {
         setLayers((prev) => [...prev.map((l) => ({ ...l, active: false })), newLayer] as typeof prev);
         setElementProperties((prev) => ({ ...prev, [tempId]: newProps }));
         setActiveTool("move");
-        createLayer(TEMP_PROJECT_ID, { name: newLayer.name }).catch(console.error);
       };
       img.src = dataUrl;
     };

@@ -8,12 +8,7 @@ import type { ElementProperties } from "../../components/editor-canvas/ElementsR
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
-vi.mock("../lib/api", () => ({
-  createLayer: vi.fn(),
-  getLayers: vi.fn().mockResolvedValue([]),
-}));
-
-vi.mock("../lib/export", () => ({
+vi.mock("../../lib/export", () => ({
   buildSvgString: vi.fn(() => "<svg><rect/></svg>"),
   downloadSvg: vi.fn(),
   copySvgText: vi.fn(),

@@ -14,11 +14,6 @@ vi.mock("../lib/export", () => ({
   copyMarkdown: vi.fn(),
 }));
 
-vi.mock("../lib/api", () => ({
-  createLayer: vi.fn(),
-  getLayers: vi.fn().mockResolvedValue([]),
-}));
-
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe("Export feature", () => {

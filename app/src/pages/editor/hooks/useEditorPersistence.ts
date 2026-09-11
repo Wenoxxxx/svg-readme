@@ -6,7 +6,7 @@ import {
   autosave as autosaveFn,
   resetPersistence,
   setCurrentProjectId as setPersistenceProjectId,
-  saveDocument,
+  adoptDocumentAsSaved,
   type DocumentState as PersistenceDocState,
 } from "../../../lib/persistence";
 import { clearEditorStorage } from "../../../context/EditorContext";
@@ -31,12 +31,8 @@ interface UseEditorPersistenceParams {
   setHistory: React.Dispatch<React.SetStateAction<HistoryState>>;
 }
 
-// ─── Hook ─────────────────────────────────────────────────────────────────────
+// ─── Hook (local-only: no backend) ────────────────────────────────────────────
 
-/**
- * Manages document persistence: autosave on changes, load from backend,
- * save on demand, and new-project reset.
- */
 export function useEditorPersistence({
   isProjectActive,
   layers,
@@ -53,54 +49,54 @@ export function useEditorPersistence({
   markClean,
   setHistory,
 }: UseEditorPersistenceParams) {
-  // ── Persistence: document ref for autosave + EditorTopNav Save button ───
   const persistenceDocRef = useRef<PersistenceDocState>({ layers, elementProperties, frameSize });
   useEffect(() => {
     persistenceDocRef.current = { layers, elementProperties, frameSize };
   }, [layers, elementProperties, frameSize]);
 
-  // ── Autosave: debounced save on document changes ─────────────────────────
+  // Debounced local autosave status (no network).
   useEffect(() => {
     if (!isProjectActive) return;
-    const hasContent = layers.length > 0 && Object.keys(elementProperties).length > 0;
-    if (!hasContent) return;
+    if (layers.length === 0 && Object.keys(elementProperties).length === 0) return;
     autosaveFn(persistenceDocRef.current);
   }, [layers, elementProperties, isProjectActive]);
 
-  // ── Load project from backend (triggered by navbar Open) ─────────────────
+  // Open-design event bus: fired by navbar file picker / drag-drop JSON.
   useEffect(() => {
     const handler = async (e: Event) => {
       const detail = (e as CustomEvent).detail as {
-        project: { id: string; name: string; canvasWidth: number; canvasHeight: number };
+        name: string;
         doc: PersistenceDocState;
       };
-
       if (isProjectActive) {
         await flushAutosave(persistenceDocRef.current);
       }
-
+      const pid = adoptDocumentAsSaved(detail.doc);
       setLayers(detail.doc.layers);
       setElementProperties(detail.doc.elementProperties);
       setFrameSize(detail.doc.frameSize);
-      setCurrentProjectId(detail.project.id);
-      setProjectName(detail.project.name);
-      setPersistenceProjectId(detail.project.id);
+      setCurrentProjectId(pid);
+      setPersistenceProjectId(pid);
+      setProjectName(detail.name);
       setSelectedLayerId(null);
       setSelectedLayerIds([]);
       setIsProjectActive(true);
       setHistory({ past: [], future: [] });
       markClean();
     };
-
-    window.addEventListener("load-project", handler);
-    return () => window.removeEventListener("load-project", handler);
+    window.addEventListener("open-design", handler);
+    // Legacy backend event name — kept as an alias during migration.
+    window.addEventListener("load-project", handler as EventListener);
+    return () => {
+      window.removeEventListener("open-design", handler);
+      window.removeEventListener("load-project", handler as EventListener);
+    };
   }, [
     isProjectActive, setLayers, setElementProperties, setFrameSize,
     setCurrentProjectId, setProjectName, setIsProjectActive,
     setSelectedLayerId, setSelectedLayerIds, markClean, setHistory,
   ]);
 
-  // ── New Project — reset all state and clear localStorage ─────────────────
   const handleNewProject = useCallback(() => {
     clearEditorStorage();
     setLayers([]);
@@ -112,17 +108,14 @@ export function useEditorPersistence({
     markClean();
     resetPersistence();
     setCurrentProjectId(null);
+    setPersistenceProjectId(null);
     setProjectName("Untitled");
   }, [setLayers, setElementProperties, setSelectedLayerId, setSelectedLayerIds, setIsProjectActive, markClean, setCurrentProjectId, setProjectName, setHistory]);
 
-  // ── Manual save (called from keyboard shortcut) ─────────────────────────
+  // Ctrl+S: caller (navbar) triggers file download; hook just exposes doc ref.
   const handleSave = useCallback(() => {
-    saveDocument(persistenceDocRef.current);
+    window.dispatchEvent(new CustomEvent("request-design-save"));
   }, []);
 
-  return {
-    persistenceDocRef,
-    handleNewProject,
-    handleSave,
-  };
+  return { persistenceDocRef, handleNewProject, handleSave };
 }
