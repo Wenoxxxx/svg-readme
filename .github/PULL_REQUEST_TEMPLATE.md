@@ -13,10 +13,11 @@
 
 ## Testing Instructions
 <!-- DEFAULT Local hosting test -->
-1. Create a MongoDB database (locally or MongoDB Atlas) and set its URI in `backend/.env` as `MONGODB_URI`.
-2. In the `backend` directory, run `npm run dev` to start the backend on port 3001.
-3. In the `app` directory, run `npm run dev` to start the frontend on port 5173.
-4. Create a new layer in the UI and verify that it persists and updates in MongoDB (e.g., Compass).
+1. cd app && npm install (restores missing @phosphor-icons/react)
+2. npm run dev → frontend on 5173 (no backend step, no MongoDB needed)
+3. Draw → Save (Ctrl+S) → confirm .svg-readme.json downloads → clear/new → Open file → canvas restores identical
+4. Drag-drop .json onto canvas → replaces doc; drag-drop .svg → appends layers
+5. npx tsc --noEmit clean; npx vitest run --pool=threads 47 files / 457 pass; npm run build green
 
 ## Type of Change
 - [ ] feat
