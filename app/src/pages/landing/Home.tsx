@@ -128,7 +128,7 @@ export default function Home() {
     navigator.clipboard
       .writeText(md)
       .then(() => flashToast("Copied to clipboard"))
-      .catch(() => flashToast("Copy failed"));
+      .catch(() => flashToast("Copy needs HTTPS — use download instead"));
   };
 
   const [svgW, svgH] = size.split("x").map(Number);

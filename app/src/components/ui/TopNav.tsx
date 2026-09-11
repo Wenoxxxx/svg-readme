@@ -8,7 +8,7 @@ export default function TopNav() {
           to="/"
           className="flex items-center gap-2 font-['Poppins'] font-semibold text-[17px] text-zinc-900 no-underline"
         >
-          <img className="w-7 h-7 0 flex items-center justify-center" src="/svg-readme-logo.png" />
+          <img className="w-7 h-7 0 flex items-center justify-center" src={`${import.meta.env.BASE_URL}svg-readme-logo.png`} />
           svg-readme
         </Link>
         <div className="flex gap-7 items-center">

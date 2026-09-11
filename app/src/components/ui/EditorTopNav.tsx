@@ -222,7 +222,7 @@ export default function EditorTopNav({
           </Link>
           <div className="h-4 w-px bg-white/10" />
           <div className="flex items-center gap-2">
-            <img className="w-7 h-7" src="/svg-readme-logo.png" alt="svg-readme" />
+            <img className="w-7 h-7" src={`${import.meta.env.BASE_URL}svg-readme-logo.png`} alt="svg-readme" />
             <span className="font-[Poppins] font-medium text-[15px]">svg-readme</span>
             {isProjectActive && (
               <>

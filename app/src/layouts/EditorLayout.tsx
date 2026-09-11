@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { ReactNode, MutableRefObject } from "react";
 import EditorTopNav from "../components/ui/EditorTopNav";
 import TopToolbar from "../components/ui/TopToolbar";
@@ -62,6 +62,23 @@ export default function EditorLayout({
   const [internalRightTab, setInternalRightTab] = useState<"design" | "animate" | "export">("design");
   const activeRightTab = controlledRightTab ?? internalRightTab;
   const onRightTabChange = controlledOnRightTabChange ?? setInternalRightTab;
+  const [copyError, setCopyError] = useState<string | null>(null);
+
+  // Transient toast for clipboard failures (non-HTTPS origins, denied permission).
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const message = (e as CustomEvent).detail?.message as string | undefined;
+      setCopyError(message ?? "Copy unavailable — use download instead.");
+    };
+    window.addEventListener("copy-failed", handler);
+    return () => window.removeEventListener("copy-failed", handler);
+  }, []);
+
+  useEffect(() => {
+    if (!copyError) return;
+    const t = setTimeout(() => setCopyError(null), 4000);
+    return () => clearTimeout(t);
+  }, [copyError]);
   return (
     <div className="h-screen w-screen flex flex-col bg-[#09090b] text-zinc-100 font-[Poppins] selection:bg-blue-500/30 selection:text-white">
       <EditorTopNav
@@ -103,7 +120,6 @@ export default function EditorLayout({
           />
           {children}
         </main>
-
         <EditorRightBar
           onExport={onExport}
           selectedLayerIds={selectedLayerIds}
@@ -118,6 +134,15 @@ export default function EditorLayout({
           onTabChange={onRightTabChange}
         />
       </div>
+
+      {copyError && (
+        <div
+          role="alert"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] px-4 py-2.5 rounded-lg bg-red-950/95 border border-red-500/40 text-sm text-red-200 shadow-2xl"
+        >
+          {copyError}
+        </div>
+      )}
     </div>
   );
 }

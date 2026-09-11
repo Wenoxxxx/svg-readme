@@ -16,12 +16,12 @@ export function downloadSvg(svgString: string, filename = "banner.svg"): void {
 }
 
 export function copySvgText(svgString: string): Promise<void> {
-  return navigator.clipboard.writeText(svgString);
+  return guardedClipboardWrite(() => navigator.clipboard.writeText(svgString));
 }
 
 export function copyMarkdown(filename = "banner.svg"): Promise<void> {
   const md = `![banner](./${filename})`;
-  return navigator.clipboard.writeText(md);
+  return guardedClipboardWrite(() => navigator.clipboard.writeText(md));
 }
 
 /**
@@ -38,7 +38,36 @@ export async function copyImageToClipboard(
   scale: number = 2,
 ): Promise<void> {
   const blob = await svgStringToPngBlob(svgString, width, height, scale, elementProperties);
-  await navigator.clipboard.write([
-    new ClipboardItem({ "image/png": blob }),
-  ]);
+  await guardedClipboardWrite(() =>
+    navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]),
+  );
+}
+
+/** Friendly message shown when the Clipboard API is unavailable or denied. */
+export const CLIPBOARD_UNAVAILABLE_MESSAGE =
+  "Copy unavailable (clipboard needs HTTPS or permission) — use download instead.";
+
+/** Whether the async Clipboard API exists in this browser/context. */
+export function isClipboardAvailable(): boolean {
+  return (
+    typeof navigator !== "undefined" &&
+    !!navigator.clipboard &&
+    typeof navigator.clipboard.writeText === "function"
+  );
+}
+
+async function guardedClipboardWrite(write: () => Promise<void>): Promise<void> {
+  if (!isClipboardAvailable()) {
+    throw new Error(CLIPBOARD_UNAVAILABLE_MESSAGE);
+  }
+  try {
+    await write();
+  } catch {
+    throw new Error(CLIPBOARD_UNAVAILABLE_MESSAGE);
+  }
+}
+
+/** Broadcast a copy failure so UI can toast it (see EditorLayout listener). */
+export function notifyCopyFailure(message: string = CLIPBOARD_UNAVAILABLE_MESSAGE): void {
+  window.dispatchEvent(new CustomEvent("copy-failed", { detail: { message } }));
 }

@@ -1,4 +1,5 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 // LANDING PAGES
 import LandingLayout from "./layouts/LandingLayout";
@@ -11,7 +12,8 @@ import Editor from "./pages/editor/Editor";
 
 export default function App() {
   return (
-    <Router>
+    <ErrorBoundary>
+      <Router>
       <Routes>
         <Route element={<LandingLayout />}>
           <Route path="/" element={<Home />} />
@@ -21,6 +23,7 @@ export default function App() {
 
         <Route path="/editor" element={<Editor />} />
       </Routes>
-    </Router>
+      </Router>
+    </ErrorBoundary>
   );
 }

@@ -7,6 +7,7 @@ import {
   copySvgText,
   copyMarkdown,
   copyImageToClipboard,
+  notifyCopyFailure,
 } from "../../../lib/export";
 import { downloadPng } from "../../../lib/exportPng";
 import { exportAnimated, downloadGif } from "../../../lib/animatedExport";
@@ -62,12 +63,16 @@ export function useEditorExport(data: ExportData) {
       const d = exportDataRef.current;
       const opts = readOptions(e);
       const svgString = buildSvgString({ ...d, ...toBuildOptions(opts) });
-      copySvgText(svgString).catch(console.error);
+      copySvgText(svgString).catch((err: unknown) =>
+        notifyCopyFailure(err instanceof Error ? err.message : undefined),
+      );
     };
 
     const handleCopyMd = (e: Event) => {
       const opts = readOptions(e);
-      copyMarkdown(`${opts?.filename ?? "banner"}.svg`).catch(console.error);
+      copyMarkdown(`${opts?.filename ?? "banner"}.svg`).catch((err: unknown) =>
+        notifyCopyFailure(err instanceof Error ? err.message : undefined),
+      );
     };
 
     const handleExportPng = (e: Event) => {
@@ -92,7 +97,9 @@ export function useEditorExport(data: ExportData) {
         d.frameSize.height,
         d.elementProperties,
         opts?.pngScale ?? 2,
-      ).catch(console.error);
+      ).catch((err: unknown) =>
+        notifyCopyFailure(err instanceof Error ? err.message : undefined),
+      );
     };
 
     const handleExportAnimated = (e: Event) => {
