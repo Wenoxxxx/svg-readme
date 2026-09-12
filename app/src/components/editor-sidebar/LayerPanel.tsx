@@ -584,7 +584,7 @@ export default function LayerPanel({
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className="flex-1 flex flex-col min-h-0" data-tour="layers">
       <div className="px-5 py-4 flex items-center justify-between border-b border-white/5">
         <div className="flex items-center gap-2 text-[11px] font-[JetBrains_Mono] text-zinc-500 uppercase font-semibold tracking-wider">
           <Stack className="w-3.5 h-3.5" />

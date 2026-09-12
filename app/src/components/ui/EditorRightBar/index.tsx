@@ -80,7 +80,7 @@ export default function EditorRightBar({
 
   const isControlled = controlledTab !== undefined;
   return (
-    <aside className="w-80 shrink-0 border-l border-white/5 bg-[#09090b]/95 backdrop-blur-xl flex flex-col z-10 shadow-[-4px_0_24px_rgba(0,0,0,0.2)]">
+    <aside className="w-80 shrink-0 border-l border-white/5 bg-[#09090b]/95 backdrop-blur-xl flex flex-col z-10 shadow-[-4px_0_24px_rgba(0,0,0,0.2)]" data-tour="properties">
       {/* Tab headers — hidden when controlled via TopToolbar */}
       {!isControlled && (
         <div className="flex border-b border-white/5 px-2 pt-2">

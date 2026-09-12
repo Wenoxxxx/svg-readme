@@ -4,6 +4,7 @@ import EditorTopNav from "../components/ui/EditorTopNav";
 import TopToolbar from "../components/ui/TopToolbar";
 import EditorSidebar from "../components/ui/EditorSidebar";
 import EditorRightBar from "../components/ui/EditorRightBar";
+import EditorTour from "../components/ui/EditorTour/EditorTour";
 import type { EditorTool } from "../context/EditorContext";
 import { type FrameSize } from "../components/editor-sidebar/FramePanel";
 import type { ElementProperties } from "../components/editor-canvas/ElementsRenderer";
@@ -140,6 +141,8 @@ export default function EditorLayout({
           onTabChange={onRightTabChange}
         />
       </div>
+
+      <EditorTour />
 
       {copyError && (
         <div

@@ -46,7 +46,7 @@ export default function FramePanel({
   };
 
   return (
-    <div className="border-b border-white/5 flex flex-col shrink-0">
+    <div className="border-b border-white/5 flex flex-col shrink-0" data-tour="frame">
       <div className="px-5 py-4 flex items-center justify-between">
         <div className="flex items-center gap-2 text-[11px] font-[JetBrains_Mono] text-zinc-500 uppercase font-semibold tracking-wider">
           <ArrowsOut className="w-3.5 h-3.5" />

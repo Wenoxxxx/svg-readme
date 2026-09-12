@@ -51,15 +51,16 @@ export default function ViewportControls({
       className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-xl border border-white/10 bg-[#09090b]/90 p-1.5 shadow-2xl backdrop-blur-xl"
       role="toolbar"
       aria-label="Canvas viewport controls"
+      data-tour="viewport"
     >
       <button
         type="button"
         onClick={onZoomOut}
-        className="touch-target flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-white/10 hover:text-white active:scale-95"
+        className="flex items-center justify-center w-8 h-8 transition-colors rounded-lg touch-target text-zinc-400 hover:bg-white/10 hover:text-white active:scale-95"
         aria-label="Zoom out"
         title="Zoom out"
       >
-        <Minus className="h-4 w-4" aria-hidden="true" />
+        <Minus className="w-4 h-4" aria-hidden="true" />
       </button>
 
       {/* Zoom percentage with dropdown */}
@@ -67,12 +68,12 @@ export default function ViewportControls({
         <button
           type="button"
           onClick={() => setShowZoomMenu((prev) => !prev)}
-          className="flex items-center gap-1 min-w-16 rounded-lg px-2 py-2 text-center font-mono text-xs text-zinc-300 transition-colors hover:bg-white/10 hover:text-white active:scale-95"
+          className="flex items-center gap-1 px-2 py-2 font-mono text-xs text-center transition-colors rounded-lg min-w-16 text-zinc-300 hover:bg-white/10 hover:text-white active:scale-95"
           aria-label="Zoom level"
           title="Zoom level"
         >
           {Math.round(zoom * 100)}%
-          <CaretDown className="h-3 w-3 text-zinc-500" aria-hidden="true" />
+          <CaretDown className="w-3 h-3 text-zinc-500" aria-hidden="true" />
         </button>
 
         {showZoomMenu && (
@@ -112,21 +113,21 @@ export default function ViewportControls({
       <button
         type="button"
         onClick={onZoomIn}
-        className="touch-target flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-white/10 hover:text-white active:scale-95"
+        className="flex items-center justify-center w-8 h-8 transition-colors rounded-lg touch-target text-zinc-400 hover:bg-white/10 hover:text-white active:scale-95"
         aria-label="Zoom in"
         title="Zoom in"
       >
-        <Plus className="h-4 w-4" aria-hidden="true" />
+        <Plus className="w-4 h-4" aria-hidden="true" />
       </button>
-      <span className="mx-1 h-5 w-px bg-white/10" aria-hidden="true" />
+      <span className="w-px h-5 mx-1 bg-white/10" aria-hidden="true" />
       <button
         type="button"
         onClick={onFit}
-        className="touch-target flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-white/10 hover:text-white active:scale-95"
+        className="flex items-center justify-center w-8 h-8 transition-colors rounded-lg touch-target text-zinc-400 hover:bg-white/10 hover:text-white active:scale-95"
         aria-label="Center canvas"
         title="Center canvas"
       >
-        <ArrowsOut className="h-4 w-4" aria-hidden="true" />
+        <ArrowsOut className="w-4 h-4" aria-hidden="true" />
       </button>
       <button
         type="button"
@@ -140,7 +141,7 @@ export default function ViewportControls({
         aria-pressed={gridEnabled}
         title="Toggle grid (G)"
       >
-        <GridFour className="h-4 w-4" aria-hidden="true" />
+        <GridFour className="w-4 h-4" aria-hidden="true" />
       </button>
       <button
         type="button"
@@ -154,7 +155,7 @@ export default function ViewportControls({
         aria-pressed={snapEnabled}
         title="Toggle snapping"
       >
-        <Magnet className="h-4 w-4" aria-hidden="true" />
+        <Magnet className="w-4 h-4" aria-hidden="true" />
       </button>
     </div>
   );

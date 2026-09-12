@@ -230,7 +230,7 @@ export default function TopToolbar({ onToolSelect, activeRightTab, onRightTabCha
   return (
     <div className="h-12 shrink-0 flex items-center gap-1 px-4 border-b border-white/5 bg-[#09090b]/80 backdrop-blur-md z-30 relative">
       {/* Navigation group */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1" data-tour="nav-tools">
         {navigationTools.map((tool) => (
           <ToolButton
             key={tool.id}
@@ -244,7 +244,7 @@ export default function TopToolbar({ onToolSelect, activeRightTab, onRightTabCha
       <Divider />
 
       {/* Creation group */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1" data-tour="create-tools">
         {creationTools.map((tool) => (
           <ToolButton
             key={tool.id}
@@ -258,7 +258,7 @@ export default function TopToolbar({ onToolSelect, activeRightTab, onRightTabCha
       <Divider />
 
       {/* Shapes group — single parent button with caret + flyout */}
-      <div className="relative flex items-center" ref={flyoutRef}>
+      <div className="relative flex items-center" ref={flyoutRef} data-tour="shape-tools">
         <div
           className={`flex items-center rounded-md transition-all ${
             isShapeActive ? "bg-blue-600/20 text-blue-400" : "text-zinc-400"
@@ -331,7 +331,7 @@ export default function TopToolbar({ onToolSelect, activeRightTab, onRightTabCha
       <Divider />
 
       {/* Utility group */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1" data-tour="utility-tools">
         {utilityTools.map((tool) => (
           <div key={tool.id} className="relative flex items-center">
             <ToolButton
@@ -369,7 +369,7 @@ export default function TopToolbar({ onToolSelect, activeRightTab, onRightTabCha
       {showTemplates && (
         <>
           <Divider />
-          <div className="relative flex items-center" ref={tplRef}>
+          <div className="relative flex items-center" ref={tplRef} data-tour="templates">
             <button
               onClick={() => setTplOpen((v) => !v)}
               aria-label="Insert template"
@@ -520,7 +520,7 @@ export default function TopToolbar({ onToolSelect, activeRightTab, onRightTabCha
         <>
           <div className="flex-1" aria-hidden="true" />
           <Divider />
-          <div className="flex items-center gap-1" role="tablist" aria-label="Right sidebar tabs">
+          <div className="flex items-center gap-1" role="tablist" aria-label="Right sidebar tabs" data-tour="right-tabs">
             {(["design", "animate", "export"] as RightBarTab[]).map((tab) => {
               const active = activeRightTab === tab;
               return (
