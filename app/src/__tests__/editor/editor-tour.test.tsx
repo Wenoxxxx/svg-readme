@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import EditorTour, { TOUR_EVENT } from "../../components/ui/EditorTour/EditorTour";
 import {
@@ -33,6 +33,38 @@ describe("EditorTour explore mode", () => {
     expect(screen.getByTestId("tour-hint")).toBeInTheDocument();
   });
 
+  it("docks the hint under the About button instead of the screen center", () => {
+    const aboutBtn = document.createElement("button");
+    aboutBtn.setAttribute("aria-label", "About editor tools");
+    document.body.appendChild(aboutBtn);
+    const rect = {
+      x: 100, y: 10, left: 100, top: 10, right: 132, bottom: 42,
+      width: 32, height: 32, toJSON: () => ({}),
+    } as DOMRect;
+    const spy = vi.spyOn(aboutBtn, "getBoundingClientRect").mockReturnValue(rect);
+    try {
+      render(<EditorTour />);
+      toggleTour();
+      const hint = screen.getByTestId("tour-hint");
+      // Pinned below the button (top 42 + 12 gap), not centered.
+      expect(hint.style.top).toBe("54px");
+      expect(hint.style.left).toBe("100px");
+      // Ring sits on the About button while the hint shows.
+      expect(screen.getByTestId("tour-highlight")).toBeInTheDocument();
+    } finally {
+      spy.mockRestore();
+      aboutBtn.remove();
+    }
+  });
+
+  it("falls back to a centered hint when the About button is missing", () => {
+    render(<EditorTour />);
+    toggleTour();
+    const hint = screen.getByTestId("tour-hint");
+    expect(hint.style.top).toBe("");
+    expect(screen.queryByTestId("tour-highlight")).not.toBeInTheDocument();
+  });
+
   it("toggles closed when the About event fires again", () => {
     renderWithAnchor();
     toggleTour();
@@ -53,13 +85,62 @@ describe("EditorTour explore mode", () => {
     expect(screen.queryByTestId("tour-hint")).not.toBeInTheDocument();
   });
 
-  it("returns to the hint when the cursor leaves all groups", () => {
-    renderWithAnchor();
+  it("returns to the hint after the leave grace expires", () => {
+    vi.useFakeTimers();
+    try {
+      renderWithAnchor();
+      toggleTour();
+      fireEvent.mouseOver(screen.getByText("anchor fixture"));
+      expect(screen.getByTestId("tour-explore-card")).toBeInTheDocument();
+      fireEvent.mouseOver(document.body);
+      // Grace: popup survives the gap crossing…
+      expect(screen.getByTestId("tour-explore-card")).toBeInTheDocument();
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      // …then clears once the cursor is truly elsewhere.
+      expect(screen.getByTestId("tour-hint")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the popup pinned while the cursor is on the card (no chasing)", () => {
+    vi.useFakeTimers();
+    try {
+      renderWithAnchor();
+      toggleTour();
+      fireEvent.mouseOver(screen.getByText("anchor fixture"));
+      const card = screen.getByTestId("tour-explore-card");
+      // Cross the gap (schedules the leave) then land on the card (cancels it).
+      fireEvent.mouseOver(document.body);
+      fireEvent.mouseOver(card);
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(screen.getByTestId("tour-explore-card")).toBeInTheDocument();
+      // Button stays clickable after the wait.
+      fireEvent.click(screen.getByText("Take full tour"));
+      expect(screen.getByTestId("editor-tour")).toHaveAttribute("data-mode", "walkthrough");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("switches straight to the newly hovered group", () => {
+    render(
+      <>
+        <div data-tour="nav-tools">first</div>
+        <div data-tour="export">second</div>
+        <EditorTour />
+      </>,
+    );
     toggleTour();
-    fireEvent.mouseOver(screen.getByText("anchor fixture"));
-    expect(screen.getByTestId("tour-explore-card")).toBeInTheDocument();
-    fireEvent.mouseOver(document.body);
-    expect(screen.getByTestId("tour-hint")).toBeInTheDocument();
+    fireEvent.mouseOver(screen.getByText("first"));
+    expect(screen.getByText("Navigate: Move / Hand")).toBeInTheDocument();
+    fireEvent.mouseOver(screen.getByText("second"));
+    expect(screen.getByText("Export SVG")).toBeInTheDocument();
+    expect(screen.getByText("14 / 14")).toBeInTheDocument();
   });
 
   it("does not close when the dim layer is clicked in explore mode", () => {

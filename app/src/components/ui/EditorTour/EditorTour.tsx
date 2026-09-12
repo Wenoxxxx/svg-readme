@@ -28,6 +28,14 @@ const TOOLTIP_WIDTH = 320;
 const TOOLTIP_EST_HEIGHT = 270;
 /** Targets taller than this get the popup pinned to their top edge. */
 const TALL_TARGET_PX = 400;
+/** About button in the top nav — the hint card docks under it. */
+const ABOUT_BTN_SELECTOR = '[aria-label="About editor tools"]';
+/**
+ * Grace before the popup clears after the cursor leaves a group.
+ * Lets the user cross the gap to the card and hit "Take full tour"
+ * without the popup unmounting mid-travel (no chasing).
+ */
+const LEAVE_GRACE_MS = 250;
 
 function readRect(selector?: string, scroll = true): TargetRect | null {
   if (!selector) return null;
@@ -62,6 +70,9 @@ export default function EditorTour() {
   const measureFor = useCallback((m: TourMode, hov: number, step: number) => {
     if (m === "explore" && hov >= 0) {
       setRect(readRect(ANCHORED_STEPS[hov]?.selector, false));
+    } else if (m === "explore") {
+      // Nothing hovered: ring + dock the hint card at the About button.
+      setRect(readRect(ABOUT_BTN_SELECTOR, false));
     } else if (m === "walkthrough") {
       setRect(readRect(TOUR_STEPS[step]?.selector, true));
     } else {
@@ -69,22 +80,42 @@ export default function EditorTour() {
     }
   }, []);
 
+  // Pending leave-clear timeout (cleared on re-enter / popup hover / close).
+  const leaveTimer = useRef<number | null>(null);
+  const cancelLeave = useCallback(() => {
+    if (leaveTimer.current !== null) {
+      window.clearTimeout(leaveTimer.current);
+      leaveTimer.current = null;
+    }
+  }, []);
+  const scheduleLeave = useCallback(() => {
+    cancelLeave();
+    leaveTimer.current = window.setTimeout(() => {
+      leaveTimer.current = null;
+      setHovered(-1);
+      measureFor("explore", -1, 0);
+    }, LEAVE_GRACE_MS);
+  }, [cancelLeave, measureFor]);
+
   const close = useCallback(() => {
+    cancelLeave();
     setMode("closed");
     setHovered(-1);
     setRect(null);
-  }, []);
+  }, [cancelLeave]);
 
   // Toggle on About-button event.
   useEffect(() => {
     const handler = () => {
+      cancelLeave();
       setMode((m) => (m === "closed" ? "explore" : "closed"));
       setHovered(-1);
-      setRect(null);
+      // Opening: dock at the About button right away (closing unmounts anyway).
+      setRect(readRect(ABOUT_BTN_SELECTOR, false));
     };
     window.addEventListener(TOUR_EVENT, handler);
     return () => window.removeEventListener(TOUR_EVENT, handler);
-  }, []);
+  }, [cancelLeave]);
 
   // Broadcast open state so the About button can show its active style.
   useEffect(() => {
@@ -101,9 +132,16 @@ export default function EditorTour() {
       if (t.closest('[data-testid="editor-tour"]')) return;
       const anchor = t.closest("[data-tour]");
       const idx = anchoredIndexOfTourValue(anchor?.getAttribute("data-tour") ?? null);
-      if (idx !== hoveredRef.current) {
-        setHovered(idx);
-        measureFor("explore", idx, 0);
+      if (idx >= 0) {
+        cancelLeave();
+        if (idx !== hoveredRef.current) {
+          setHovered(idx);
+          measureFor("explore", idx, 0);
+        }
+      } else if (hoveredRef.current >= 0 && leaveTimer.current === null) {
+        // Cursor left the group — grace before clearing so the card
+        // (and its buttons) stay clickable while the mouse travels.
+        scheduleLeave();
       }
     };
     document.addEventListener("mouseover", pick);
@@ -111,8 +149,9 @@ export default function EditorTour() {
     return () => {
       document.removeEventListener("mouseover", pick);
       document.removeEventListener("click", pick, true);
+      cancelLeave();
     };
-  }, [mode, measureFor]);
+  }, [mode, measureFor, cancelLeave, scheduleLeave]);
 
   // Re-measure on resize / scroll + lock body scroll in walkthrough only.
   useEffect(() => {
@@ -136,12 +175,13 @@ export default function EditorTour() {
 
   const enterWalkthrough = useCallback(
     (anchored: number) => {
+      cancelLeave();
       const idx = anchored >= 0 ? walkthroughIndexOfAnchored(anchored) : 0;
       setStepIndex(idx);
       setMode("walkthrough");
       measureFor("walkthrough", hovered, idx);
     },
-    [hovered, measureFor],
+    [hovered, measureFor, cancelLeave],
   );
 
   const next = useCallback(() => {
@@ -230,15 +270,26 @@ export default function EditorTour() {
       )}
 
       {mode === "explore" && !hoveredStep && (
-        <div className="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
+        <div
+          className={
+            rect
+              ? "absolute"
+              : "absolute inset-0 flex items-center justify-center p-4 pointer-events-none"
+          }
+          onMouseOver={cancelLeave}
+        >
           <div
             ref={cardRef}
             tabIndex={-1}
             role="dialog"
             aria-modal="false"
             aria-label="Editor guide: hover any highlighted tool group"
-            className={`${cardShell} w-full max-w-sm`}
-            style={{ width: TOOLTIP_WIDTH, maxWidth: "calc(100vw - 32px)" }}
+            className={`${cardShell} ${rect ? "" : "w-full max-w-sm"}`}
+            style={
+              rect
+                ? tooltipStyleFor(rect)
+                : { width: TOOLTIP_WIDTH, maxWidth: "calc(100vw - 32px)" }
+            }
             data-testid="tour-hint"
           >
             <div className="flex items-start justify-between gap-3">
@@ -274,7 +325,7 @@ export default function EditorTour() {
       )}
 
       {mode === "explore" && hoveredStep && (
-        <div className="absolute">
+        <div className="absolute" onMouseOver={cancelLeave}>
           <div
             ref={cardRef}
             tabIndex={-1}
