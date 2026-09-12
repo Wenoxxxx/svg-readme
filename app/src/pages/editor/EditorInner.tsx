@@ -702,6 +702,7 @@ export function EditorInner() {
       <div
         ref={workspaceRef}
         data-testid="workspace-area"
+        data-tour="canvas"
         className="relative w-full h-full flex items-start justify-start overflow-hidden"
         style={{
           cursor:

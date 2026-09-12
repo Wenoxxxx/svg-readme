@@ -11,7 +11,9 @@ import {
   Spinner,
   WarningCircle,
   Keyboard,
+  Question,
 } from "@phosphor-icons/react";
+import { startEditorTour, TOUR_STATE_EVENT } from "./EditorTour/EditorTour";
 import { Link, useNavigate } from "react-router-dom";
 import { useEditor } from "../../context/EditorContext";
 import { UnsavedChangesModal } from "./UnsavedChangesModal";
@@ -75,6 +77,16 @@ export default function EditorTopNav({
 
   useEffect(() => {
     return onSaveStatus(setSaveStatus);
+  }, []);
+
+  // Guide active state — lights the About button while explore/walkthrough is open.
+  const [guideActive, setGuideActive] = useState(false);
+  useEffect(() => {
+    const handler = (e: Event) => {
+      setGuideActive(Boolean((e as CustomEvent).detail?.open));
+    };
+    window.addEventListener(TOUR_STATE_EVENT, handler);
+    return () => window.removeEventListener(TOUR_STATE_EVENT, handler);
   }, []);
 
   // ── Modal state for unsaved-changes guards ───────────────────────
@@ -272,39 +284,53 @@ export default function EditorTopNav({
             </span>
           )}
           {isProjectActive && (
-            <button
-              onClick={() => window.dispatchEvent(new CustomEvent("toggle-shortcuts"))}
-              title="Keyboard shortcuts (Ctrl+/)"
-              aria-label="Keyboard shortcuts"
-              className="p-2 rounded-md text-zinc-400 hover:text-white hover:bg-white/5 transition-colors"
-            >
-              <Keyboard className="w-4 h-4" />
-            </button>
-          )}
-
-          {isProjectActive && (
-            <div className="flex items-center gap-1 mr-1" aria-label="History controls">
+            <div className="flex items-center gap-1" aria-label="About and history controls">
               <button
-                onClick={onUndo}
-                disabled={!canUndo}
-                title="Undo (Ctrl/Cmd+Z)"
-                className="p-2 rounded-md text-zinc-400 hover:text-white hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                onClick={startEditorTour}
+                title="About this editor — hover to learn each tool"
+                aria-label="About editor tools"
+                aria-pressed={guideActive}
+                className={`p-2 rounded-md transition-colors ${
+                  guideActive
+                    ? "bg-blue-600/20 text-blue-400"
+                    : "text-zinc-400 hover:text-white hover:bg-white/5"
+                }`}
               >
-                <ArrowCounterClockwise className="w-4 h-4" />
+                <Question className="w-4 h-4" />
               </button>
-              <button
-                onClick={onRedo}
-                disabled={!canRedo}
-                title="Redo (Ctrl/Cmd+Shift+Z)"
-                className="p-2 rounded-md text-zinc-400 hover:text-white hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              >
-                <ArrowClockwise className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-1" data-tour="history" aria-label="Shortcuts and history controls">
+                <button
+                  onClick={() => window.dispatchEvent(new CustomEvent("toggle-shortcuts"))}
+                  title="Keyboard shortcuts (Ctrl+/)"
+                  aria-label="Keyboard shortcuts"
+                  className="p-2 rounded-md text-zinc-400 hover:text-white hover:bg-white/5 transition-colors"
+                >
+                  <Keyboard className="w-4 h-4" />
+                </button>
+                <div className="flex items-center gap-1 mr-1" aria-label="History controls">
+                <button
+                  onClick={onUndo}
+                  disabled={!canUndo}
+                  title="Undo (Ctrl/Cmd+Z)"
+                  className="p-2 rounded-md text-zinc-400 hover:text-white hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ArrowCounterClockwise className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={onRedo}
+                  disabled={!canRedo}
+                  title="Redo (Ctrl/Cmd+Shift+Z)"
+                  className="p-2 rounded-md text-zinc-400 hover:text-white hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ArrowClockwise className="w-4 h-4" />
+                </button>
+                </div>
+              </div>
             </div>
           )}
 
           {isProjectActive && (
-            <>
+            <div className="flex items-center gap-3" data-tour="file-actions" aria-label="File actions">
               <button
                 onClick={handleOpenClick}
                 title="Open design JSON file"
@@ -331,22 +357,21 @@ export default function EditorTopNav({
                 <FloppyDisk className="w-4 h-4" />
                 Save
               </button>
-            </>
-          )}
 
-          {isProjectActive && (
-            <button
-              onClick={handleNew}
-              title="New Project"
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white border border-white/10 hover:bg-white/5 rounded-md transition-all duration-200"
-            >
-              <FilePlus className="w-4 h-4" />
-              New
-            </button>
+              <button
+                onClick={handleNew}
+                title="New Project"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white border border-white/10 hover:bg-white/5 rounded-md transition-all duration-200"
+              >
+                <FilePlus className="w-4 h-4" />
+                New
+              </button>
+            </div>
           )}
 
           <button
             onClick={onExport}
+            data-tour="export"
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-md hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.3)] transition-all duration-200 border border-blue-500/50"
           >
             <DownloadSimple className="w-4 h-4" />
