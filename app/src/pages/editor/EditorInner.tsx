@@ -21,6 +21,10 @@ import { useEditorClipboard } from "./hooks/useEditorClipboard";
 import { useEditorExport } from "./hooks/useEditorExport";
 import { useEditorPersistence } from "./hooks/useEditorPersistence";
 import { usePathVertexEditing } from "./hooks/usePathVertexEditing";
+import { useComponentInsert } from "./hooks/useComponentInsert";
+import { consumeQuickHandoff, buildHandoffDocument } from "../landing/lib/quickHandoff";
+import { BACKGROUND_TEMPLATES, getBackgroundTemplate, type BackgroundTemplateOptions } from "../../lib/templates/backgroundAnimations";
+import { getAnimatedComponent } from "../../lib/templates/animatedComponents";
 
 // ─── Inner component that uses context ────────────────────────────────────────
 
@@ -101,6 +105,41 @@ export function EditorInner() {
   // ── Path vertex editing (extracted hook) ──────────────────────────────
   const { selectedVertex, setSelectedVertex, handleMoveStart, handleMoveElement, handleDeleteVertex } =
     usePathVertexEditing({ saveToHistory, setElementProperties });
+
+  // ── Template ribbon inserts (append kits, replace backgrounds) ──────────
+  const { handleInsertComponent, handleReplaceBackground } = useComponentInsert({
+    documentRef, saveToHistory, setLayers, setElementProperties, setSelectedLayerId, setSelectedLayerIds,
+  });
+
+  const handleInsertComponentById = useCallback((id: string) => {
+    const component = getAnimatedComponent(id);
+    if (!component) return;
+    handleInsertComponent(component.build(frameSize.width, frameSize.height));
+  }, [frameSize, handleInsertComponent]);
+
+  const handleInsertBackgroundById = useCallback((id: string, opts?: BackgroundTemplateOptions) => {
+    const template = getBackgroundTemplate(id);
+    if (!template) return;
+    handleReplaceBackground(template.build(frameSize.width, frameSize.height, opts));
+  }, [frameSize, handleReplaceBackground]);
+
+  // ── Quick-generator handoff (one-shot) ───────────────────────────────────
+  // If the landing studio saved a payload to sessionStorage, adopt it as the
+  // new document so users can continue in the full editor.
+  useEffect(() => {
+    const payload = consumeQuickHandoff();
+    if (!payload) return;
+    const doc = buildHandoffDocument(payload);
+    setFrameSize(doc.frameSize);
+    setLayers(doc.layers);
+    setElementProperties(doc.elementProperties);
+    setSelectedLayerId(null);
+    setSelectedLayerIds([]);
+    setProjectName(doc.name);
+    setHistory({ past: [], future: [] });
+    markClean();
+    setIsProjectActive(true);
+  }, [setFrameSize, setLayers, setElementProperties, setSelectedLayerId, setSelectedLayerIds, setProjectName, setHistory, markClean, setIsProjectActive]);
 
   // ── Node selection clear on tool change ──────────────────────────────────
   useEffect(() => {
@@ -536,7 +575,7 @@ export function EditorInner() {
           <div className="bg-zinc-900 border border-white/10 p-8 w-full max-w-md rounded-xl shadow-[0_30px_80px_-20px_rgba(0,0,0,0.8)] flex flex-col gap-6 z-30">
             <div>
               <h2 className="text-xl font-semibold text-white font-[Poppins]">Create a new banner</h2>
-              <p className="text-xs text-zinc-400 mt-1">Get started by creating a blank canvas or picking a standard template.</p>
+              <p className="text-xs text-zinc-400 mt-1">Get started by creating a blank canvas or picking a standard or animated-background template.</p>
             </div>
             <div className="flex flex-col gap-3">
               <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider">Custom Dimensions</span>
@@ -555,6 +594,8 @@ export function EditorInner() {
                   const w = parseInt(customWidth) || 800;
                   const h = parseInt(customHeight) || 200;
                   setFrameSize({ width: w, height: h });
+                  setHistory({ past: [], future: [] });
+                  markClean();
                   setIsProjectActive(true);
                 }}
                 className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-medium text-sm rounded-md shadow-lg shadow-blue-500/20 transition-all cursor-pointer border border-blue-500/50"
@@ -571,7 +612,7 @@ export function EditorInner() {
                 ].map((t) => (
                   <button
                     key={t.name}
-                    onClick={() => { setFrameSize({ width: t.w, height: t.h }); setIsProjectActive(true); }}
+                    onClick={() => { setFrameSize({ width: t.w, height: t.h }); setHistory({ past: [], future: [] }); markClean(); setIsProjectActive(true); }}
                     className="flex justify-between items-center bg-zinc-950 hover:bg-zinc-800/80 p-3 rounded-md border border-white/5 transition-all text-left group cursor-pointer"
                   >
                     <div>
@@ -579,6 +620,51 @@ export function EditorInner() {
                       <p className="text-[11px] text-zinc-500">{t.desc}</p>
                     </div>
                     <span className="text-[11px] font-mono text-zinc-400 bg-zinc-900 border border-white/5 px-2 py-0.5 rounded">{t.w} × {t.h}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="h-px bg-white/5" />
+            <div className="flex flex-col gap-3">
+              <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider">Animated Backgrounds</span>
+              <div className="flex flex-col gap-2">
+                {BACKGROUND_TEMPLATES.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => {
+                      const w = parseInt(customWidth) || 800;
+                      const h = parseInt(customHeight) || 200;
+                      const built = t.build(w, h);
+                      setFrameSize({ width: w, height: h });
+                      setLayers(built.layers);
+                      setElementProperties(built.elementProperties);
+                      setSelectedLayerId(null);
+                      setSelectedLayerIds([]);
+                      setHistory({ past: [], future: [] });
+                      markClean();
+                      setIsProjectActive(true);
+                    }}
+                    className="flex justify-between items-center bg-zinc-950 hover:bg-zinc-800/80 p-3 rounded-md border border-white/5 transition-all text-left group cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span
+                        className="flex -space-x-1"
+                        aria-hidden="true"
+                      >
+                        {t.previewColors.map((c) => (
+                          <span
+                            key={c}
+                            className="w-4 h-4 rounded-full border border-black/50"
+                            style={{ backgroundColor: c }}
+                          />
+                        ))}
+                      </span>
+                      <div>
+                        <h4 className="text-sm font-medium text-zinc-200 group-hover:text-white transition-colors">{t.name}</h4>
+                        <p className="text-[11px] text-zinc-500">{t.desc}</p>
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-mono text-zinc-400 bg-zinc-900 border border-white/5 px-2 py-0.5 rounded">animated</span>
                   </button>
                 ))}
               </div>
@@ -610,6 +696,8 @@ export function EditorInner() {
       onAlignmentStart={handleAlignmentStart}
       onLayerContextAction={handleLayerContextAction}
       documentRef={persistenceDocRef}
+      onInsertComponent={handleInsertComponentById}
+      onInsertBackground={handleInsertBackgroundById}
     >
       <div
         ref={workspaceRef}

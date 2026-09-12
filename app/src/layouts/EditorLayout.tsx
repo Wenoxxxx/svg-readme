@@ -33,6 +33,8 @@ interface EditorLayoutProps {
   documentRef?: MutableRefObject<DocumentState>;
   activeRightTab?: "design" | "animate" | "export";
   onRightTabChange?: (tab: "design" | "animate" | "export") => void;
+  onInsertComponent?: (id: string) => void;
+  onInsertBackground?: (id: string, opts?: import("../lib/templates/backgroundAnimations").BackgroundTemplateOptions) => void;
 }
 
 export default function EditorLayout({
@@ -58,6 +60,8 @@ export default function EditorLayout({
   documentRef,
   activeRightTab: controlledRightTab,
   onRightTabChange: controlledOnRightTabChange,
+  onInsertComponent,
+  onInsertBackground,
 }: EditorLayoutProps) {
   const [internalRightTab, setInternalRightTab] = useState<"design" | "animate" | "export">("design");
   const activeRightTab = controlledRightTab ?? internalRightTab;
@@ -98,6 +102,8 @@ export default function EditorLayout({
           onToolSelect={onToolSelect}
           activeRightTab={activeRightTab}
           onRightTabChange={onRightTabChange}
+          onInsertComponent={onInsertComponent}
+          onInsertBackground={onInsertBackground}
         />
       )}
 

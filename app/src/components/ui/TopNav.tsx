@@ -6,27 +6,43 @@ export default function TopNav() {
       <div className="flex items-center justify-between py-[18px] px-6 max-w-[1180px] mx-auto">
         <Link
           to="/"
-          className="flex items-center gap-2 font-['Poppins'] font-semibold text-[17px] text-zinc-900 no-underline"
+          className="flex items-center gap-2 font-display font-semibold text-[17px] text-zinc-900 no-underline"
         >
-          <img className="w-7 h-7 0 flex items-center justify-center" src={`${import.meta.env.BASE_URL}svg-readme-logo.png`} />
+          <img
+            className="w-7 h-7 flex items-center justify-center"
+            src={`${import.meta.env.BASE_URL}svg-readme-logo.png`}
+            alt="svg-readme logo"
+          />
           svg-readme
         </Link>
         <div className="flex gap-7 items-center">
           <a
-            href="#studio"
+            href="/#studio"
             className="text-sm text-zinc-500 hover:text-zinc-900 transition-colors no-underline"
           >
             Generator
           </a>
           <a
-            href="#how"
+            href="/#how"
             className="text-sm text-zinc-500 hover:text-zinc-900 transition-colors no-underline"
           >
             How it works
           </a>
           <Link
+            to="/about"
+            className="text-sm text-zinc-500 hover:text-zinc-900 transition-colors no-underline"
+          >
+            About
+          </Link>
+          <Link
+            to="/contacts"
+            className="text-sm text-zinc-500 hover:text-zinc-900 transition-colors no-underline"
+          >
+            Contact
+          </Link>
+          <Link
             to="/editor"
-            className="text-sm text-[#1b5def] font-semibold hover:text-blue-700 transition-colors no-underline"
+            className="text-sm text-[#1b5def] font-semibold hover:text-[#164ecb] transition-colors no-underline"
           >
             Full Editor →
           </Link>
