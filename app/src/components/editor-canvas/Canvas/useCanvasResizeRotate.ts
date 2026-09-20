@@ -1,8 +1,9 @@
 import { useCallback } from "react";
-import { canResize, startResize } from "../../../lib/editor-tools/ResizeHandler";
+import { canResize, isTextHandleEnabled, startResize } from "../../../lib/editor-tools/ResizeHandler";
 import { startRotate } from "../../../lib/editor-tools/RotateHandler";
 import { getSelectionBounds } from "../../../lib/editor/geometry";
 import { getElementBoundingBox } from "../ElementsRenderer";
+import { getTextAutoBox } from "../../../lib/editor/textMeasure";
 import type { ElementProperties } from "../ElementsRenderer";
 import { mergeState } from "./helpers";
 
@@ -66,6 +67,19 @@ export function useCanvasResizeRotate({
       handle: "tl" | "tc" | "tr" | "ml" | "mr" | "bl" | "bc" | "br",
     ) => {
       e.stopPropagation();
+      // For text, certain handles are disabled (HEIGHT / WIDTH_AND_HEIGHT block tc/bc)
+      // Single text is checked inside startResize; for multi we pre-check if any selected text rejects this handle.
+      if (
+        selectedProps?.type === "text" &&
+        !isTextHandleEnabled(selectedProps, handle)
+      ) return;
+      if (
+        multiResizable &&
+        selectedLayerIds.some((id) => {
+          const p = elementProperties[id];
+          return p?.type === "text" && !isTextHandleEnabled(p, handle);
+        })
+      ) return;
       if (isEditingText) onCommitText?.();
       onResizeStart?.();
       const ctx = buildContext(e) as { worldPoint: { x: number; y: number } };
@@ -75,7 +89,16 @@ export function useCanvasResizeRotate({
         for (const id of selectedLayerIds) {
           const props = elementProperties[id];
           if (!props) continue;
-          initialBoxes[id] = { x: props.x, y: props.y, width: typeof props.width === "number" ? props.width : 0, height: props.height };
+          if (props.type === "text") {
+            try {
+              const box = getTextAutoBox(props as never, props.content);
+              initialBoxes[id] = { x: props.x, y: props.y, width: box.width, height: box.height };
+            } catch {
+              initialBoxes[id] = { x: props.x, y: props.y, width: typeof props.width === "number" ? props.width : 100, height: props.height };
+            }
+          } else {
+            initialBoxes[id] = { x: props.x, y: props.y, width: typeof props.width === "number" ? props.width : 0, height: props.height };
+          }
         }
         setState((prev) => ({
           ...prev,

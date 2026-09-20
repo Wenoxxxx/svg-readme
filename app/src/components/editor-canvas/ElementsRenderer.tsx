@@ -33,26 +33,47 @@ const TextElement = memo(function TextElement({
   suppressSelectionOutline?: boolean;
   isEditing?: boolean;
 }) {
-  const anchor = TEXT_ANCHOR_MAP[properties.textAlign] ?? "start";
-  const boxHeight = properties.height;
+  // Defensive defaults — stale localStorage / bad import must never crash the canvas
+  const safeProps = {
+    ...properties,
+    x: typeof properties.x === "number" && Number.isFinite(properties.x) ? properties.x : 0,
+    y: typeof properties.y === "number" && Number.isFinite(properties.y) ? properties.y : 0,
+    width: properties.width === "auto" ? "auto" as const : (typeof properties.width === "number" && Number.isFinite(properties.width) ? properties.width : 100),
+    height: typeof properties.height === "number" && Number.isFinite(properties.height) ? properties.height : 24,
+    content: typeof properties.content === "string" ? properties.content : String((properties as { content?: unknown }).content ?? ""),
+    fontFamily: typeof properties.fontFamily === "string" ? properties.fontFamily : "Inter",
+    fontSize: typeof properties.fontSize === "number" && Number.isFinite(properties.fontSize) && properties.fontSize > 0 ? properties.fontSize : 14,
+    fontWeight: typeof properties.fontWeight === "number" ? properties.fontWeight : 400,
+    color: typeof properties.color === "string" ? properties.color : "#ffffff",
+    textAlign: (properties.textAlign ?? "left") as TextElementProperties["textAlign"],
+    textAlignVertical: (properties.textAlignVertical ?? "top") as TextElementProperties["textAlignVertical"],
+    textAutoResize: (properties.textAutoResize ?? "WIDTH_AND_HEIGHT") as TextElementProperties["textAutoResize"],
+  } as TextElementProperties;
+  const anchor = TEXT_ANCHOR_MAP[safeProps.textAlign] ?? "start";
+  const boxHeight = safeProps.height;
 
-  const isAutoWidth = properties.width === "auto";
-  const resize = properties.textAutoResize ?? "NONE";
+  const isAutoWidth = safeProps.width === "auto";
+  const resize = safeProps.textAutoResize ?? "NONE";
   const wrapWidth =
     isAutoWidth || resize === "WIDTH_AND_HEIGHT"
       ? 0
-      : (properties.width as number);
-  const lines = getTextLines(properties.content, properties, wrapWidth);
+      : (safeProps.width as number);
+  let lines: ReturnType<typeof getTextLines>;
+  try {
+    lines = getTextLines(safeProps.content, safeProps, wrapWidth);
+  } catch {
+    lines = [];
+  }
   const boxWidth: number = isAutoWidth
     ? Math.max(getTextBlockWidth(lines), 20)
-    : (properties.width as number);
-  const lineHeight = getLineHeight(properties);
-  const blockHeight = getTextBlockHeight(lines, properties);
-  const blockOffsetY = getTextVerticalOffset(boxHeight, blockHeight, properties.textAlignVertical);
+    : (safeProps.width as number);
+  const lineHeight = getLineHeight(safeProps);
+  const blockHeight = getTextBlockHeight(lines, safeProps);
+  const blockOffsetY = getTextVerticalOffset(boxHeight, blockHeight, safeProps.textAlignVertical);
 
   const lineX = isAutoWidth || resize === "WIDTH_AND_HEIGHT"
     ? 0
-    : getTextXWithinBox(properties, boxWidth);
+    : getTextXWithinBox(safeProps, boxWidth);
   const lineAnchor = isAutoWidth || resize === "WIDTH_AND_HEIGHT" ? "start" : anchor;
 
   const showHighlight = (isSelected && !suppressSelectionOutline) || isRubberBandHighlighted;
@@ -61,12 +82,12 @@ const TextElement = memo(function TextElement({
     <g
       className="canvas-element"
       data-layer-type="text"
-      transform={`translate(${properties.x}, ${properties.y})`}
+      transform={`translate(${safeProps.x}, ${safeProps.y})`}
     >
-      {properties.backgroundColor && (
+      {safeProps.backgroundColor && (
         <rect
           x={0} y={0} width={boxWidth} height={boxHeight}
-          fill={properties.backgroundColor} rx={3}
+          fill={safeProps.backgroundColor} rx={3}
           className="pointer-events-none"
         />
       )}
@@ -83,18 +104,18 @@ const TextElement = memo(function TextElement({
       {!isEditing && (
         <>
           {lines.map((line, i) => {
-            const lineY = blockOffsetY + properties.fontSize + i * lineHeight;
-            const decoration = properties.textDecoration ?? "NONE";
-            const decorationY = decoration === "UNDERLINE" ? lineY + 2 : lineY - properties.fontSize * 0.4;
+            const lineY = blockOffsetY + safeProps.fontSize + i * lineHeight;
+            const decoration = safeProps.textDecoration ?? "NONE";
+            const decorationY = decoration === "UNDERLINE" ? lineY + 2 : lineY - safeProps.fontSize * 0.4;
             return (
               <g key={i} className="pointer-events-none">
                 <text
                   x={lineX} y={lineY}
-                  fontFamily={properties.fontFamily} fontSize={properties.fontSize}
-                  fontWeight={properties.fontWeight}
-                  fontStyle={properties.italic ? "italic" : "normal"}
-                  fill={properties.color}
-                  letterSpacing={properties.letterSpacing ? String(properties.letterSpacing) : undefined}
+                  fontFamily={safeProps.fontFamily} fontSize={safeProps.fontSize}
+                  fontWeight={safeProps.fontWeight}
+                  fontStyle={safeProps.italic ? "italic" : "normal"}
+                  fill={safeProps.color}
+                  letterSpacing={safeProps.letterSpacing ? String(safeProps.letterSpacing) : undefined}
                   textAnchor={lineAnchor}
                 >
                   {line.text}
@@ -104,8 +125,8 @@ const TextElement = memo(function TextElement({
                     x1={lineAnchor === "end" ? boxWidth - line.width : lineX}
                     x2={lineAnchor === "end" ? boxWidth : lineAnchor === "middle" ? lineX + line.width / 2 : lineX + line.width}
                     y1={decorationY} y2={decorationY}
-                    stroke={properties.color}
-                    strokeWidth={Math.max(1, properties.fontSize * 0.06)}
+                    stroke={safeProps.color}
+                    strokeWidth={Math.max(1, safeProps.fontSize * 0.06)}
                   />
                 )}
               </g>
@@ -427,6 +448,8 @@ interface ElementsRendererProps {
   onElementMouseDown: (e: React.MouseEvent, layerId: string) => void;
   onElementDoubleClick?: (e: React.MouseEvent, layerId: string) => void;
   onElementHover?: (layerId: string | null) => void;
+  /** Right-click on a layer — opens the selection context menu. */
+  onElementContextMenu?: (e: React.MouseEvent, layerId: string) => void;
 }
 
 export default function ElementsRenderer({
@@ -446,6 +469,7 @@ export default function ElementsRenderer({
   onElementMouseDown,
   onElementDoubleClick,
   onElementHover,
+  onElementContextMenu,
 }: ElementsRendererProps) {
   const selectedSet = new Set(selectedLayerIds ?? (selectedLayerId ? [selectedLayerId] : []));
   const rubberBandSet = new Set(rubberBandHighlightedIds ?? []);
@@ -529,7 +553,14 @@ export default function ElementsRenderer({
       const childrenBounds = computeGroupChildrenBounds(layer.id);
 
       return (
-        <g key={layer.id} data-layer-id={layer.id} data-layer-type="group" className="canvas-element" onMouseDown={(e) => onElementMouseDown(e, layer.id)}>
+        <g
+          key={layer.id}
+          data-layer-id={layer.id}
+          data-layer-type="group"
+          className="canvas-element"
+          onMouseDown={(e) => onElementMouseDown(e, layer.id)}
+          onContextMenu={(e) => onElementContextMenu?.(e, layer.id)}
+        >
           {isEmpty && (() => {
             const pw = 140;
             const ph = 100;
@@ -602,6 +633,7 @@ export default function ElementsRenderer({
         onDoubleClick={(e) => onElementDoubleClick?.(e, layer.id)}
         onMouseEnter={() => onElementHover?.(layer.id)}
         onMouseLeave={() => onElementHover?.(null)}
+        onContextMenu={(e) => onElementContextMenu?.(e, layer.id)}
         style={{ pointerEvents: isEditing ? "none" : undefined, animation: animStyle ?? undefined, animationDelay: animDelay ?? undefined, animationPlayState: scrubTime != null ? "paused" : undefined }}
       >
         {props.type === "text" ? (

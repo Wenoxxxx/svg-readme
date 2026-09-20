@@ -17,20 +17,27 @@ export type TextLine = {
 };
 
 /** Case transform — ported from open-pencil's transformTextCase. */
-export function transformTextCase(text: string, textCase?: TextElementProperties["textCase"]): string {
-  if (textCase === "UPPER") return text.toLocaleUpperCase();
-  if (textCase === "LOWER") return text.toLocaleLowerCase();
-  if (textCase === "TITLE") {
-    return text.replace(/[\p{L}\p{N}][\p{L}\p{M}\p{N}]*/gu, (word) =>
-      word.charAt(0).toLocaleUpperCase() + word.slice(1).toLocaleLowerCase(),
-    );
+export function transformTextCase(text: unknown, textCase?: TextElementProperties["textCase"]): string {
+  const s = typeof text === "string" ? text : String(text ?? "");
+  try {
+    if (textCase === "UPPER") return s.toLocaleUpperCase();
+    if (textCase === "LOWER") return s.toLocaleLowerCase();
+    if (textCase === "TITLE") {
+      return s.replace(/[\p{L}\p{N}][\p{L}\p{M}\p{N}]*/gu, (word) =>
+        word.charAt(0).toLocaleUpperCase() + word.slice(1).toLocaleLowerCase(),
+      );
+    }
+  } catch {
+    return s;
   }
-  return text;
+  return s;
 }
 
 /** Resolve the effective line height (px) for a text element. */
 export function getLineHeight(props: Pick<TextElementProperties, "lineHeight" | "fontSize">): number {
-  return props.lineHeight && props.lineHeight > 0 ? props.lineHeight : props.fontSize * 1.4;
+  const fs = typeof props.fontSize === "number" && Number.isFinite(props.fontSize) && props.fontSize > 0 ? props.fontSize : 14;
+  const lh = typeof props.lineHeight === "number" && Number.isFinite(props.lineHeight) ? props.lineHeight : 0;
+  return lh && lh > 0 ? lh : fs * 1.4;
 }
 
 // ─── Measurement ─────────────────────────────────────────────────────────────
@@ -52,7 +59,10 @@ function getMeasureCtx(): CanvasRenderingContext2D | null {
 
 /** Best-effort font string for the measurement context. */
 function fontString(props: Pick<TextElementProperties, "fontFamily" | "fontSize" | "fontWeight" | "italic">): string {
-  return `${props.italic ? "italic " : ""}${props.fontWeight} ${props.fontSize}px ${props.fontFamily}`;
+  const ff = typeof props.fontFamily === "string" && props.fontFamily ? props.fontFamily : "Inter";
+  const fw = typeof props.fontWeight === "number" ? props.fontWeight : 400;
+  const fs = typeof props.fontSize === "number" && Number.isFinite(props.fontSize) && props.fontSize > 0 ? props.fontSize : 14;
+  return `${props.italic ? "italic " : ""}${fw} ${fs}px ${ff}`;
 }
 
 /**
@@ -60,16 +70,23 @@ function fontString(props: Pick<TextElementProperties, "fontFamily" | "fontSize"
  * falls back to the editor's heuristic (0.6 * fontSize per char + letterSpacing).
  */
 export function measureTextWidth(
-  text: string,
+  text: unknown,
   props: Pick<TextElementProperties, "fontFamily" | "fontSize" | "fontWeight" | "italic" | "letterSpacing">,
 ): number {
-  const spacing = (props.letterSpacing ?? 0) * Math.max(text.length - 1, 0);
+  const s = typeof text === "string" ? text : String(text ?? "");
+  const fs = typeof props.fontSize === "number" && Number.isFinite(props.fontSize) && props.fontSize > 0 ? props.fontSize : 14;
+  const ls = typeof props.letterSpacing === "number" && Number.isFinite(props.letterSpacing) ? props.letterSpacing : 0;
+  const spacing = ls * Math.max(s.length - 1, 0);
   const ctx = getMeasureCtx();
-  if (ctx) {
-    ctx.font = fontString(props);
-    return Math.ceil(ctx.measureText(text).width + spacing);
+  try {
+    if (ctx) {
+      ctx.font = fontString({ ...props, fontSize: fs } as TextElementProperties);
+      return Math.ceil(ctx.measureText(s).width + spacing);
+    }
+  } catch {
+    // fall through to heuristic
   }
-  return Math.ceil(text.length * props.fontSize * 0.6 + spacing);
+  return Math.ceil(s.length * fs * 0.6 + spacing);
 }
 
 /**
@@ -78,51 +95,57 @@ export function measureTextWidth(
  * - When boxWidth is finite (> 0), long lines wrap on word boundaries.
  * - When auto (0 / undefined), lines are only broken by explicit newlines.
  * Returns lines with measured widths (case-transformed text).
+ * Defensive: content/boxWidth/props may be malformed from stale storage — never throw.
  */
 export function getTextLines(
-  content: string,
+  content: unknown,
   props: Pick<TextElementProperties, "fontFamily" | "fontSize" | "fontWeight" | "italic" | "letterSpacing" | "textCase">,
-  boxWidth: number,
+  boxWidth: unknown,
 ): TextLine[] {
-  const text = transformTextCase(content, props.textCase);
-  if (!text) return [];
+  try {
+    const text = transformTextCase(content, props.textCase);
+    if (!text) return [];
 
-  const wrap = boxWidth > 0;
-  const lines: TextLine[] = [];
-  for (const raw of text.split("\n")) {
-    if (!wrap) {
-      lines.push({ text: raw, width: measureTextWidth(raw, props) });
-      continue;
-    }
-    const words = raw.split(/(\s+)/).filter((w) => w.length > 0);
-    if (words.length === 0) {
-      lines.push({ text: "", width: 0 });
-      continue;
-    }
-    let current = "";
-    let currentWidth = 0;
-    const flush = () => {
-      lines.push({ text: current, width: currentWidth });
-      current = "";
-      currentWidth = 0;
-    };
-    for (const word of words) {
-      const w = measureTextWidth(word, props);
-      if (current === "") {
-        current = word;
-        currentWidth = w;
-      } else if (currentWidth + w <= boxWidth) {
-        current += word;
-        currentWidth += w;
-      } else {
-        flush();
-        current = word;
-        currentWidth = w;
+    const bw = typeof boxWidth === "number" && Number.isFinite(boxWidth) ? boxWidth : 0;
+    const wrap = bw > 0;
+    const lines: TextLine[] = [];
+    for (const raw of text.split("\n")) {
+      if (!wrap) {
+        lines.push({ text: raw, width: measureTextWidth(raw, props) });
+        continue;
       }
+      const words = raw.split(/(\s+)/).filter((w) => w.length > 0);
+      if (words.length === 0) {
+        lines.push({ text: "", width: 0 });
+        continue;
+      }
+      let current = "";
+      let currentWidth = 0;
+      const flush = () => {
+        lines.push({ text: current, width: currentWidth });
+        current = "";
+        currentWidth = 0;
+      };
+      for (const word of words) {
+        const w = measureTextWidth(word, props);
+        if (current === "") {
+          current = word;
+          currentWidth = w;
+        } else if (currentWidth + w <= bw) {
+          current += word;
+          currentWidth += w;
+        } else {
+          flush();
+          current = word;
+          currentWidth = w;
+        }
+      }
+      if (current !== "") flush();
     }
-    if (current !== "") flush();
+    return lines;
+  } catch {
+    return [];
   }
-  return lines;
 }
 
 /** Total rendered height of a set of lines (lineHeight * line count). */
@@ -150,34 +173,45 @@ export function getTextBlockWidth(lines: TextLine[]): number {
  */
 export function getTextAutoBox(
   props: Pick<TextElementProperties, "width" | "height" | "fontFamily" | "fontSize" | "fontWeight" | "italic" | "letterSpacing" | "textCase" | "textAutoResize" | "lineHeight">,
-  content: string,
+  content: unknown,
 ): { width: number; height: number } {
-  const isAutoWidth = props.width === "auto";
-  const resize = props.textAutoResize ?? "NONE";
-  const fixedWidth = typeof props.width === "number" ? props.width : 0;
-  const wrapWidth = isAutoWidth || resize === "WIDTH_AND_HEIGHT" ? 0 : fixedWidth;
-  const lines = getTextLines(content, props, wrapWidth);
-  const width = isAutoWidth
-    ? Math.max(getTextBlockWidth(lines), 20)
-    : fixedWidth;
-  const height = isAutoWidth
-    ? Math.max(getTextBlockHeight(lines, props), props.fontSize * 1.4)
-    : props.height;
-  return { width, height };
+  try {
+    const isAutoWidth = props.width === "auto";
+    const resize = props.textAutoResize ?? "NONE";
+    const fixedWidth = typeof props.width === "number" && Number.isFinite(props.width) ? props.width : 0;
+    const wrapWidth = isAutoWidth || resize === "WIDTH_AND_HEIGHT" ? 0 : fixedWidth;
+    const lines = getTextLines(content, props, wrapWidth);
+    const fs = typeof props.fontSize === "number" && Number.isFinite(props.fontSize) && props.fontSize > 0 ? props.fontSize : 14;
+    const width = isAutoWidth
+      ? Math.max(getTextBlockWidth(lines), 20)
+      : fixedWidth;
+    const rawHeight = typeof props.height === "number" && Number.isFinite(props.height) ? props.height : fs * 1.4;
+    const height = isAutoWidth
+      ? Math.max(getTextBlockHeight(lines, props), fs * 1.4)
+      : rawHeight;
+    return { width, height };
+  } catch {
+    return { width: 20, height: 20 };
+  }
 }
 
 export function computeAutoSize(
   props: Pick<TextElementProperties, "width" | "height" | "fontFamily" | "fontSize" | "fontWeight" | "italic" | "letterSpacing" | "textCase" | "lineHeight" | "textAutoResize">,
-  content: string,
+  content: unknown,
 ): { width?: number; height?: number } {
-  const mode = props.textAutoResize ?? "NONE";
-  if (mode === "NONE") return {};
-  const boxWidth = props.width === "auto" ? 0 : props.width;
-  const lines = getTextLines(content, props, boxWidth);
-  const changes: { width?: number; height?: number } = {};
-  if (mode === "WIDTH_AND_HEIGHT") {
-    changes.width = Math.max(getTextBlockWidth(lines), 1);
+  try {
+    const mode = props.textAutoResize ?? "NONE";
+    if (mode === "NONE") return {};
+    const boxWidth = props.width === "auto" ? 0 : (typeof props.width === "number" && Number.isFinite(props.width) ? props.width : 0);
+    const lines = getTextLines(content, props, boxWidth);
+    const fs = typeof props.fontSize === "number" && Number.isFinite(props.fontSize) && props.fontSize > 0 ? props.fontSize : 14;
+    const changes: { width?: number; height?: number } = {};
+    if (mode === "WIDTH_AND_HEIGHT") {
+      changes.width = Math.max(getTextBlockWidth(lines), 1);
+    }
+    changes.height = Math.max(getTextBlockHeight(lines, props), fs * 1.4);
+    return changes;
+  } catch {
+    return {};
   }
-  changes.height = Math.max(getTextBlockHeight(lines, props), props.fontSize * 1.4);
-  return changes;
 }

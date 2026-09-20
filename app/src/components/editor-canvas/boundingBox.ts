@@ -12,13 +12,21 @@ import type { TextElementProperties, ShapeElementProperties, ImageElementPropert
  * heuristic fallback otherwise) so selection/snap agree with the rendered text (A11).
  */
 export function getTextBoundingBox(props: TextElementProperties) {
-  const { width: boxWidth, height: boxHeight } = getTextAutoBox(props, props.content);
-  return {
-    x: props.x - 2,
-    y: props.y - 2,
-    width: boxWidth + 4,
-    height: boxHeight + 4,
-  };
+  try {
+    const { width: boxWidth, height: boxHeight } = getTextAutoBox(props, props.content);
+    const x = typeof props.x === "number" && Number.isFinite(props.x) ? props.x : 0;
+    const y = typeof props.y === "number" && Number.isFinite(props.y) ? props.y : 0;
+    return {
+      x: x - 2,
+      y: y - 2,
+      width: (typeof boxWidth === "number" && Number.isFinite(boxWidth) ? boxWidth : 20) + 4,
+      height: (typeof boxHeight === "number" && Number.isFinite(boxHeight) ? boxHeight : 20) + 4,
+    };
+  } catch {
+    const x = typeof (props as { x?: unknown }).x === "number" ? (props as { x: number }).x : 0;
+    const y = typeof (props as { y?: unknown }).y === "number" ? (props as { y: number }).y : 0;
+    return { x: x - 2, y: y - 2, width: 24, height: 24 };
+  }
 }
 
 /** Bounding box for a shape element (same coords as the shape itself). */
@@ -54,8 +62,14 @@ export function computePathBounds(points: [number, number][]): { x: number; y: n
 
 /** Returns bounding box for any element type — used for rubber-band selection */
 export function getElementBoundingBox(props: ElementProperties) {
-  if (props.type === "text") return getTextBoundingBox(props);
-  if (props.type === "image") return getImageBoundingBox(props);
-  if (props.type === "path") return getPathBoundingBox(props);
-  return getShapeBoundingBox(props);
+  try {
+    if (props.type === "text") return getTextBoundingBox(props);
+    if (props.type === "image") return getImageBoundingBox(props);
+    if (props.type === "path") return getPathBoundingBox(props);
+    return getShapeBoundingBox(props);
+  } catch {
+    const x = typeof (props as { x?: unknown }).x === "number" ? (props as { x: number }).x : 0;
+    const y = typeof (props as { y?: unknown }).y === "number" ? (props as { y: number }).y : 0;
+    return { x, y, width: 20, height: 20 };
+  }
 }

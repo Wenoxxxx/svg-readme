@@ -300,6 +300,11 @@ export function useCanvasInteraction({
     (e: React.MouseEvent, _state: ToolInteractionState) => {
       e.preventDefault();
 
+      // Right-click is owned by the context-menu hook (onCanvasContextMenu /
+      // onElementContextMenu): never start a marquee, pan or drag from it, and
+      // never let it clear the selection.
+      if (e.button === 2) return;
+
       if (e.button === 1 || spacePressedRef.current) {
         setState((prev) => ({ ...prev, ...startPan(e, viewport) }));
         return;
@@ -351,8 +356,16 @@ export function useCanvasInteraction({
   // ── Element mouse down ───────────────────────────────────────────────────
   const handleElementMouseDown = useCallback(
     (e: React.MouseEvent, layerId: string, _state: ToolInteractionState) => {
+      // Right-click opens the selection context menu instead of starting a drag.
+      // Selection-on-right-click is handled there so a multi-selection survives.
+      if (e.button === 2) return;
       e.stopPropagation();
-      if (isEditingText) onCommitText?.();
+      // Guard: missing props should not crash — stale id from a bad document
+      const targetProps = elementProperties[layerId];
+      if (!targetProps) return;
+      if (isEditingText) {
+        onCommitText?.();
+      }
 
       if (activeTool === "move") {
         if (e.altKey) {
@@ -407,11 +420,27 @@ export function useCanvasInteraction({
 
   // ── Element double click ─────────────────────────────────────────────────
   const handleElementDoubleClick = useCallback(
-    (_e: React.MouseEvent, layerId: string) => {
+    (e: React.MouseEvent, layerId: string) => {
+      // Prevent the SVG's own onDoubleClick (pen-tool close) from firing
+      e.stopPropagation();
+      // If already editing, commit first then re-enter — avoids stale dragState
+      if (isEditingText) onCommitText?.();
       if (activeTool !== "move") return;
       const props = elementProperties[layerId];
-      if (props && props.type === "text") {
-        onEditText(layerId);
+      // Defensive: props may be missing after a bad import/undo — fall back to layer lookup
+      const isTextLike =
+        (props && props.type === "text") ||
+        layers.find((l) => l.id === layerId)?.type === "text";
+      if (isTextLike) {
+        // Clear any drag/rubberBand left by the second mousedown of the double-click
+        setState((prev) => ({ ...prev, dragState: null, rubberBandState: null, rubberBandHighlightedIds: [] }));
+        // Only enter edit if props actually exists — otherwise EditorInner guard will no-op
+        if (props && props.type === "text") {
+          onEditText(layerId);
+        } else {
+          // Props missing: still try — EditorInner will guard and not crash
+          onEditText(layerId);
+        }
         return;
       }
       const layer = layers.find((l) => l.id === layerId);
@@ -420,7 +449,7 @@ export function useCanvasInteraction({
         layer.type === "group" ? layer.id : (layer.parentId ?? null);
       if (targetId) onSelectLayer(targetId);
     },
-    [activeTool, layers, elementProperties, onEditText, onSelectLayer],
+    [activeTool, layers, elementProperties, onEditText, onSelectLayer, isEditingText, onCommitText, setState],
   );
 
   // ── Mouse move ───────────────────────────────────────────────────────────
