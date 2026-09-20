@@ -1,7 +1,12 @@
 import { useEffect, type RefObject } from "react";
-import type { EditorTool, LayerType, ShapeSubTool } from "../../context/EditorContext";
-import { clampZoom } from "../../lib/editor/geometry";
-import type { ElementProperties } from "../../components/editor-canvas/ElementsRenderer";
+import type { EditorTool, LayerType, ShapeSubTool } from "../../../context/EditorContext";
+import { clampZoom } from "../../../lib/editor/geometry";
+import { computeSelectionCapabilities } from "../../../lib/editor/selectionCapabilities";
+import {
+  buildLayerCommands,
+  runLayerCommand,
+} from "../../../lib/editor/commands/layerCommands";
+import type { ElementProperties } from "../../../components/editor-canvas/ElementsRenderer";
 
 const SHAPE_CYCLE: ShapeSubTool[] = ["rect", "circle", "triangle", "star", "hexagon", "line"];
 
@@ -81,6 +86,26 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
   } = handlers;
 
   useEffect(() => {
+    // ── Layer commands (capability-gated) ────────────────────────────────────
+    // The same registry the context menu uses backs the layer shortcuts, so a
+    // shortcut can never fire an action the selection does not allow.
+    const layerCommands = buildLayerCommands({
+      capabilities: computeSelectionCapabilities({
+        layers,
+        selectedLayerIds,
+        elementProperties,
+      }),
+      handlers: {
+        duplicate: handleDuplicate,
+        bringToFront: () => handleReorderLayers("front"),
+        bringForward: () => handleReorderLayers("forward"),
+        sendBackward: () => handleReorderLayers("backward"),
+        sendToBack: () => handleReorderLayers("back"),
+        group: handleGroup,
+        ungroup: handleUngroup,
+      },
+    });
+
     // ── Nudge helper (defined inside effect to avoid stale-closure issues) ──
     const nudgeSelection = (dx: number, dy: number) => {
       const ids = selectedLayerIds.length > 0 ? selectedLayerIds : (selectedLayerId ? [selectedLayerId] : []);
@@ -238,7 +263,7 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
         case "D":
           if (isCtrlPressed) {
             e.preventDefault();
-            handleDuplicate();
+            runLayerCommand(layerCommands, "duplicate");
           }
           break;
         case "e":
@@ -269,13 +294,19 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
         case "]":
           if (isCtrlPressed) {
             e.preventDefault();
-            handleReorderLayers(e.shiftKey ? "front" : "forward");
+            runLayerCommand(
+              layerCommands,
+              e.shiftKey ? "bringToFront" : "bringForward",
+            );
           }
           break;
         case "[":
           if (isCtrlPressed) {
             e.preventDefault();
-            handleReorderLayers(e.shiftKey ? "back" : "backward");
+            runLayerCommand(
+              layerCommands,
+              e.shiftKey ? "sendToBack" : "sendBackward",
+            );
           }
           break;
         case "0":
@@ -295,11 +326,7 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
         case "G":
           e.preventDefault();
           if (isCtrlPressed) {
-            if (e.shiftKey) {
-              handleUngroup();
-            } else {
-              handleGroup();
-            }
+            runLayerCommand(layerCommands, e.shiftKey ? "ungroup" : "group");
           } else {
             setGridEnabled((enabled) => !enabled);
           }

@@ -2,9 +2,9 @@ import { useEffect, useCallback, useRef, useState } from "react";
 import { clampZoom } from "../../lib/editor/geometry";
 import { startPan, updatePan } from "../../lib/editor-tools/PanZoomHandler";
 import ViewportControls from "../../components/editor-canvas/ViewportControls";
-import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
-import { useLayerOperations } from "./useLayerOperations";
-import { useSvgImport } from "./useSvgImport";
+import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
+import { useLayerOperations } from "./hooks/useLayerOperations";
+import { useSvgImport } from "./hooks/useSvgImport";
 import EditorLayout from "../../layouts/EditorLayout";
 import { useEditor } from "../../context/EditorContext";
 import type { EditorTool, LayerType } from "../../context/EditorContext";
@@ -12,8 +12,9 @@ import Canvas from "../../components/editor-canvas/Canvas";
 import type { TextElementProperties, ShapeElementProperties, ImageElementProperties, PathElementProperties, ElementProperties, ShapeKind } from "../../components/editor-canvas/ElementsRenderer";
 import { rescalePoints } from "../../lib/editor/pathUtils";
 import { DEFAULT_TEXT_PROPS, DEFAULT_TEXT_HEIGHT } from "../../components/editor-canvas/types";
-import { computeAutoSize } from "../../lib/editor/textMeasure";
+import { computeAutoSize, getTextLines, getTextBlockHeight, getTextBlockWidth, getTextAutoBox } from "../../lib/editor/textMeasure";
 import { ShortcutGrid } from "./EditorInnerShortcuts";
+import SelectionContextMenu from "../../components/editor-sidebar/SelectionContextMenu";
 
 // ── Extracted hooks ───────────────────────────────────────────────────────────
 import { useEditorHistory } from "./hooks/useEditorHistory";
@@ -79,14 +80,14 @@ export function EditorInner() {
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   // documentRef: shared snapshot source for history + layer operations
-  const documentRef = useRef({ layers, elementProperties, selectedLayerIds });
+  const documentRef = useRef({ layers, elementProperties, selectedLayerIds, frameSize });
   useEffect(() => {
-    documentRef.current = { layers, elementProperties, selectedLayerIds };
-  }, [layers, elementProperties, selectedLayerIds]);
+    documentRef.current = { layers, elementProperties, selectedLayerIds, frameSize };
+  }, [layers, elementProperties, selectedLayerIds, frameSize]);
 
   // ── Extracted hooks ──────────────────────────────────────────────────────
   const { history, setHistory, saveToHistory, handleUndo, handleRedo } =
-    useEditorHistory({ documentRef, setLayers, setElementProperties, setSelectedLayerIds, setSelectedLayerId });
+    useEditorHistory({ documentRef, setLayers, setElementProperties, setSelectedLayerIds, setSelectedLayerId, setFrameSize });
 
   const { handleCopy, handlePaste } =
     useEditorClipboard({ selectedLayerIds, layers, elementProperties, frameSize, saveToHistory, setLayers, setElementProperties, setSelectedLayerIds, setSelectedLayerId });
@@ -203,8 +204,10 @@ export function EditorInner() {
   // ── Commit text edits ────────────────────────────────────────────────────
   const handleCommitText = useCallback(() => {
     if (!editingLayerId) return;
+    // Guard against stale editingContent (e.g. corrupted state double-click)
+    const safeContent = typeof editingContent === "string" ? editingContent : String(editingContent ?? "");
     saveToHistory();
-    const trimmed = editingContent.trim();
+    const trimmed = safeContent.trim();
     if (!trimmed) {
       setLayers((prev) => prev.filter((l) => l.id !== editingLayerId));
       setElementProperties((prev) => { const next = { ...prev }; delete next[editingLayerId]; return next; });
@@ -257,10 +260,18 @@ export function EditorInner() {
   });
 
   // ── Create text element ──────────────────────────────────────────────────
+  // Click (width="auto") → WIDTH_AND_HEIGHT (auto-w/h, hug). Drag (fixed w) → HEIGHT (fixed w, auto h) — Figma/open-pencil parity.
   const handleCreateText = useCallback((x: number, y: number, width: number | "auto", height: number) => {
     const tempId = `text-${Date.now()}`;
     const newLayer = { id: tempId, name: "Text", type: "text" as const, locked: false, visible: true, active: true };
-    const newProps: TextElementProperties = { ...DEFAULT_TEXT_PROPS, x, y, width, height: width === "auto" ? DEFAULT_TEXT_HEIGHT : height, content: "" };
+    const isFixedWidth = width !== "auto";
+    const newProps: TextElementProperties = {
+      ...DEFAULT_TEXT_PROPS,
+      x, y, width,
+      height: width === "auto" ? DEFAULT_TEXT_HEIGHT : height,
+      content: "",
+      textAutoResize: isFixedWidth ? "HEIGHT" : "WIDTH_AND_HEIGHT",
+    };
     selectLayer(tempId, false);
     setLayers((prev) => [...prev.map((l) => ({ ...l, active: false })), newLayer] as typeof prev);
     setElementProperties((prev) => ({ ...prev, [tempId]: newProps }));
@@ -272,13 +283,21 @@ export function EditorInner() {
 
   const handleEditText = useCallback((layerId: string) => {
     const props = elementProperties[layerId];
-    if (props && props.type === "text") {
-      setEditingLayerId(layerId);
-      setEditingContent(props.content);
-      setIsEditingText(true);
-      setSelectedLayerId(layerId);
-    }
-  }, [elementProperties, setIsEditingText, setSelectedLayerId]);
+    // Defensive: props may be missing or malformed after a bad import/undo
+    if (!props || props.type !== "text") return;
+    // Ensure we have a layer entry — double-click on a stale id should not crash
+    if (!layers.find((l) => l.id === layerId)) return;
+    const safeContent = typeof (props as TextElementProperties).content === "string"
+      ? (props as TextElementProperties).content
+      : String((props as { content?: unknown }).content ?? "");
+    // Clear any in-progress drag/resize so entering edit mode never leaves a stale dragState
+    setEditingLayerId(layerId);
+    setEditingContent(safeContent);
+    setIsEditingText(true);
+    setSelectedLayerId(layerId);
+    // Ensure selection sync for the edited layer (editingCanvas expects selected)
+    setSelectedLayerIds([layerId]);
+  }, [elementProperties, layers, setIsEditingText, setSelectedLayerId, setSelectedLayerIds]);
 
   // ── Create shape element ─────────────────────────────────────────────────
   const handleCreateShape = useCallback((kind: ShapeKind, x: number, y: number, width: number, height: number) => {
@@ -310,6 +329,7 @@ export function EditorInner() {
 
   const handleAlignmentStart = useCallback(() => { saveToHistory(); }, [saveToHistory]);
   const handlePropertiesStart = useCallback(() => { saveToHistory(); }, [saveToHistory]);
+  const handleCanvasResizeStart = useCallback(() => { saveToHistory(); }, [saveToHistory]);
 
   // ── Bulk property updates for multi-selections (B10) ─────────────────────
   const handleBulkUpdateProperties = useCallback((updates: Partial<ElementProperties>) => {
@@ -326,6 +346,43 @@ export function EditorInner() {
           merged = { ...existing, ...rest, color: (fill as string | undefined) ?? existing.color } as ElementProperties;
         } else {
           merged = { ...existing, ...updates } as ElementProperties;
+        }
+        // For text, auto-height needs recompute after font/size/width changes (bulk)
+        if (merged.type === "text") {
+          const mode = merged.textAutoResize ?? "WIDTH_AND_HEIGHT";
+          if (mode !== "NONE" && ("fontSize" in updates || "fontFamily" in updates || "letterSpacing" in updates || "lineHeight" in updates || "textCase" in updates || "width" in updates)) {
+            try {
+              const wrapW = merged.width === "auto" || mode === "WIDTH_AND_HEIGHT" ? 0 : (merged.width as number);
+              const lines = getTextLines(merged.content, merged as never, wrapW);
+              const autoH = Math.max(getTextBlockHeight(lines, merged), merged.fontSize * 1.4);
+              if (mode === "WIDTH_AND_HEIGHT") {
+                merged = { ...merged, width: "auto" as const, height: autoH } as ElementProperties;
+              } else {
+                merged = { ...merged, height: autoH } as ElementProperties;
+              }
+            } catch { /* fallback */ }
+          }
+          // textAutoResize mode switch in bulk: freeze visual box like single handler
+          if ("textAutoResize" in updates && updates.textAutoResize !== (existing as TextElementProperties).textAutoResize) {
+            try {
+              const prevMode = (existing as TextElementProperties).textAutoResize ?? "WIDTH_AND_HEIGHT";
+              const nextMode = (updates as Partial<TextElementProperties>).textAutoResize!;
+              if (prevMode === "WIDTH_AND_HEIGHT" && nextMode === "HEIGHT") {
+                const box = getTextAutoBox(existing as never, (existing as TextElementProperties).content);
+                const fixedW = Math.max(box.width, 20);
+                const lines = getTextLines((existing as TextElementProperties).content, existing as never, fixedW);
+                const autoH = Math.max(getTextBlockHeight(lines, existing as TextElementProperties), (existing as TextElementProperties).fontSize * 1.4);
+                merged = { ...merged, width: fixedW, height: autoH } as ElementProperties;
+              } else if (prevMode === "HEIGHT" && nextMode === "WIDTH_AND_HEIGHT") {
+                const lines = getTextLines((existing as TextElementProperties).content, existing as never, 0);
+                const autoH = Math.max(getTextBlockHeight(lines, existing as TextElementProperties), (existing as TextElementProperties).fontSize * 1.4);
+                merged = { ...merged, width: "auto" as const, height: autoH } as ElementProperties;
+              } else if (nextMode === "NONE") {
+                const box = getTextAutoBox(existing as never, (existing as TextElementProperties).content);
+                merged = { ...merged, width: box.width, height: box.height } as ElementProperties;
+              }
+            } catch { /* fallback */ }
+          }
         }
         next[id] = merged;
       }
@@ -344,6 +401,25 @@ export function EditorInner() {
           { x, y, width, height }, props.handles, props.subpaths,
         );
         return { ...prev, [id]: { ...props, points, handles, subpaths, ...bounds } };
+      }
+      if (props.type === "text") {
+        const mode = props.textAutoResize ?? "WIDTH_AND_HEIGHT";
+        if (mode === "NONE") {
+          return { ...prev, [id]: { ...props, x, y, width, height } };
+        }
+        // Auto-height modes (HEIGHT / WIDTH_AND_HEIGHT): width is fixed from drag, height hugs content.
+        // WIDTH_AND_HEIGHT converts to HEIGHT on first horizontal drag (Figma/open-pencil parity).
+        try {
+          const nextWidth = Math.max(width, 20);
+          const lines = getTextLines(props.content, props as never, nextWidth);
+          const blockH = getTextBlockHeight(lines, props);
+          const autoH = Math.max(blockH, props.fontSize * 1.4);
+          const nextMode = mode === "WIDTH_AND_HEIGHT" ? "HEIGHT" : mode;
+          // Keep width as dragged value, height as auto-computed (ignore drag height)
+          return { ...prev, [id]: { ...props, x, y, width: nextWidth, height: autoH, textAutoResize: nextMode } };
+        } catch {
+          return { ...prev, [id]: { ...props, x, y, width, height } };
+        }
       }
       return { ...prev, [id]: { ...props, x, y, width, height } };
     });
@@ -447,6 +523,58 @@ export function EditorInner() {
         );
         return { ...prev, [id]: { ...existing, ...updates, points, handles, subpaths, x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height } as ElementProperties };
       }
+      // Text mode transitions: keep visual box stable when switching textAutoResize (open-pencil parity)
+      if (existing.type === "text" && "textAutoResize" in updates) {
+        const nextMode = (updates as Partial<TextElementProperties>).textAutoResize;
+        if (nextMode && nextMode !== existing.textAutoResize) {
+          try {
+            if (existing.textAutoResize === "WIDTH_AND_HEIGHT" && nextMode === "HEIGHT") {
+              // Auto → fixed width: freeze current measured width
+              const box = getTextAutoBox(existing as never, existing.content);
+              const fixedW = Math.max(box.width, 20);
+              const lines = getTextLines(existing.content, existing as never, fixedW);
+              const autoH = Math.max(getTextBlockHeight(lines, existing), existing.fontSize * 1.4);
+              return { ...prev, [id]: { ...existing, ...updates, width: fixedW, height: autoH } as ElementProperties };
+            }
+            if (existing.textAutoResize === "HEIGHT" && nextMode === "WIDTH_AND_HEIGHT") {
+              // Fixed width → auto: let box hug content
+              const lines = getTextLines(existing.content, existing as never, 0);
+              const autoH = Math.max(getTextBlockHeight(lines, existing), existing.fontSize * 1.4);
+              return { ...prev, [id]: { ...existing, ...updates, width: "auto" as const, height: autoH } as ElementProperties };
+            }
+            if (nextMode === "NONE") {
+              // Any → fixed: freeze visual box
+              const box = getTextAutoBox(existing as never, existing.content);
+              return { ...prev, [id]: { ...existing, ...updates, width: box.width, height: box.height } as ElementProperties };
+            }
+            if (existing.textAutoResize === "NONE") {
+              // Fixed → auto: recompute hug
+              const lines = getTextLines(existing.content, existing as never, nextMode === "WIDTH_AND_HEIGHT" ? 0 : (typeof existing.width === "number" ? existing.width : 0));
+              const autoH = Math.max(getTextBlockHeight(lines, existing), existing.fontSize * 1.4);
+              const autoW = nextMode === "WIDTH_AND_HEIGHT" ? Math.max(getTextBlockWidth(lines), 20) : existing.width;
+              return { ...prev, [id]: { ...existing, ...updates, width: autoW as number | "auto", height: autoH } as ElementProperties };
+            }
+          } catch {
+            // fall through to simple merge
+          }
+        }
+      }
+      // When typing commits or font/size/width change, recompute auto height for HEIGHT/WIDTH_AND_HEIGHT
+      if (existing.type === "text" && (("width" in updates) || ("fontSize" in updates) || ("fontFamily" in updates) || ("letterSpacing" in updates) || ("lineHeight" in updates) || ("textCase" in updates))) {
+        const merged = { ...existing, ...updates } as TextElementProperties;
+        const mode = merged.textAutoResize ?? "WIDTH_AND_HEIGHT";
+        if (mode !== "NONE") {
+          try {
+            const wrapW = merged.width === "auto" || mode === "WIDTH_AND_HEIGHT" ? 0 : (merged.width as number);
+            const lines = getTextLines(merged.content, merged as never, wrapW);
+            const autoH = Math.max(getTextBlockHeight(lines, merged), merged.fontSize * 1.4);
+            if (mode === "WIDTH_AND_HEIGHT") {
+              return { ...prev, [id]: { ...merged, width: "auto" as const, height: autoH } as ElementProperties };
+            }
+            return { ...prev, [id]: { ...merged, height: autoH } as ElementProperties };
+          } catch { /* fallback */ }
+        }
+      }
       return { ...prev, [id]: { ...existing, ...updates } as ElementProperties };
     });
   }, [setElementProperties]);
@@ -463,6 +591,41 @@ export function EditorInner() {
   // ── SVG file import via drag-and-drop ──────────────────────────────────
   const { isDragOver, handleDragOver, handleDragEnter, handleDragLeave, handleDrop } =
     useSvgImport({ saveToHistory, setLayers, setElementProperties, setSelectedLayerIds, setSelectedLayerId });
+
+  // ── Canvas selection context menu ─────────────────────────────────────────
+  // Right-clicking artwork opens the same capability-gated command set the layer
+  // tab exposes. Right-clicking an unselected layer selects it first; right-click
+  // elsewhere on the canvas keeps the current multi-selection (Figma behavior).
+  const [canvasContextMenu, setCanvasContextMenu] = useState<{
+    x: number;
+    y: number;
+    anchorLayerId: string | null;
+  } | null>(null);
+
+  const handleElementContextMenu = useCallback(
+    (e: React.MouseEvent, layerId: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      // Keep the whole selection when the clicked layer is already part of it.
+      if (!selectedLayerIds.includes(layerId)) selectLayer(layerId, false);
+      setCanvasContextMenu({ x: e.clientX, y: e.clientY, anchorLayerId: layerId });
+    },
+    [selectedLayerIds, selectLayer],
+  );
+
+  const handleCanvasContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      // Nothing selected → leave the native browser menu alone.
+      if (selectedLayerIds.length === 0) return;
+      e.preventDefault();
+      setCanvasContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        anchorLayerId: selectedLayerIds[0] ?? null,
+      });
+    },
+    [selectedLayerIds],
+  );
 
   // ── Rubber-band multi-select ─────────────────────────────────────────────
   const handleRubberBandSelect = useCallback((ids: string[], addToExisting: boolean) => {
@@ -559,7 +722,6 @@ export function EditorInner() {
     return (
       <EditorLayout
         frameSize={frameSize}
-        setFrameSize={setFrameSize}
         onToolSelect={handleToolChange}
         onExport={handleExport}
         onNewProject={handleNewProject}
@@ -678,7 +840,6 @@ export function EditorInner() {
   return (
     <EditorLayout
       frameSize={frameSize}
-      setFrameSize={setFrameSize}
       onToolSelect={handleToolChange}
       onExport={handleExport}
       onNewProject={handleNewProject}
@@ -692,9 +853,11 @@ export function EditorInner() {
       onUpdateProperties={handleUpdateProperties}
       onBulkUpdateProperties={handleBulkUpdateProperties}
       onPropertiesStart={handlePropertiesStart}
+      onCanvasResizeStart={handleCanvasResizeStart}
       onMoveElement={handleMoveElement}
       onAlignmentStart={handleAlignmentStart}
       onLayerContextAction={handleLayerContextAction}
+      onCanvasSettingsOpen={handleClearSelection}
       documentRef={persistenceDocRef}
       onInsertComponent={handleInsertComponentById}
       onInsertBackground={handleInsertBackgroundById}
@@ -739,6 +902,8 @@ export function EditorInner() {
             onShiftSelectLayer={handleShiftSelectLayer}
             onClearSelection={handleClearSelection}
             onRubberBandSelect={handleRubberBandSelect}
+            onElementContextMenu={handleElementContextMenu}
+            onCanvasContextMenu={handleCanvasContextMenu}
             onMoveStart={handleMoveStart} onMoveElement={handleMoveElement}
             onResizeStart={handleResizeStart} onResizeElement={handleResizeElement}
             onRotateStart={handleRotateStart} onRotateElement={handleRotateElement}
@@ -781,6 +946,16 @@ export function EditorInner() {
           })}
         />
       </div>
+
+      {canvasContextMenu && (
+        <SelectionContextMenu
+          x={canvasContextMenu.x}
+          y={canvasContextMenu.y}
+          anchorLayerId={canvasContextMenu.anchorLayerId}
+          onClose={() => setCanvasContextMenu(null)}
+          onAction={handleLayerContextAction}
+        />
+      )}
 
       <input ref={imageInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleImageFileChange} />
 
