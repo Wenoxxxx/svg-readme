@@ -38,6 +38,8 @@ interface EditorTopNavProps {
   onUndo?: () => void;
   onRedo?: () => void;
   frameSize?: { width: number; height: number };
+  /** Clicking the W×H chip deselects everything and shows Canvas settings (Design tab). */
+  onFrameSizeClick?: () => void;
   /** Full document state for file save */
   documentRef?: React.MutableRefObject<DocumentState>;
 }
@@ -51,6 +53,7 @@ export default function EditorTopNav({
   onUndo,
   onRedo,
   frameSize,
+  onFrameSizeClick,
   documentRef,
 }: EditorTopNavProps) {
   const { isDirty, markClean, projectName, setProjectName } = useEditor();
@@ -264,9 +267,13 @@ export default function EditorTopNav({
                     {projectName}
                   </span>
                 )}
-                <span className="px-2 py-0.5 rounded text-[11px] font-[JetBrains_Mono] bg-zinc-800/30 text-zinc-500 border border-white/5">
+                <button
+                  onClick={onFrameSizeClick}
+                  title="Canvas size — click to change"
+                  className="px-2 py-0.5 rounded text-[11px] font-[JetBrains_Mono] bg-zinc-800/30 text-zinc-500 border border-white/5 hover:border-white/25 hover:text-zinc-200 transition-colors cursor-pointer"
+                >
                   {dimensionsLabel}
-                </span>
+                </button>
               </>
             )}
             {!isProjectActive && (

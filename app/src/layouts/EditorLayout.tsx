@@ -5,15 +5,13 @@ import TopToolbar from "../components/ui/TopToolbar";
 import EditorSidebar from "../components/ui/EditorSidebar";
 import EditorRightBar from "../components/ui/EditorRightBar";
 import EditorTour from "../components/ui/EditorTour/EditorTour";
-import type { EditorTool } from "../context/EditorContext";
-import { type FrameSize } from "../components/editor-sidebar/FramePanel";
+import type { EditorTool, FrameSize } from "../context/EditorContext";
 import type { ElementProperties } from "../components/editor-canvas/ElementsRenderer";
 import type { DocumentState } from "../lib/designFile";
 
 interface EditorLayoutProps {
   children: ReactNode;
   frameSize: FrameSize;
-  setFrameSize: (size: FrameSize) => void;
   onToolSelect?: (tool: EditorTool) => void;
   onExport?: () => void;
   onNewProject?: () => void;
@@ -27,11 +25,15 @@ interface EditorLayoutProps {
   onUpdateProperties?: (id: string, updates: Partial<ElementProperties>) => void;
   onBulkUpdateProperties?: (updates: Partial<ElementProperties>) => void;
   onPropertiesStart?: () => void;
+  /** Fired before a canvas (frame) resize so the change lands in undo history. */
+  onCanvasResizeStart?: () => void;
   onMoveElement?: (id: string, x: number, y: number) => void;
   onAlignmentStart?: () => void;
   onLayerContextAction?: (actionId: string, layerId: string) => void;
   /** Live document state ref for the navbar Save button / autosave flush. */
   documentRef?: MutableRefObject<DocumentState>;
+  /** Invoked when the top-nav W×H chip is clicked — EditorInner clears the selection here. */
+  onCanvasSettingsOpen?: () => void;
   activeRightTab?: "design" | "animate" | "export";
   onRightTabChange?: (tab: "design" | "animate" | "export") => void;
   onInsertComponent?: (id: string) => void;
@@ -41,7 +43,6 @@ interface EditorLayoutProps {
 export default function EditorLayout({
   children,
   frameSize,
-  setFrameSize,
   onToolSelect,
   onExport,
   onNewProject,
@@ -55,10 +56,12 @@ export default function EditorLayout({
   onUpdateProperties,
   onBulkUpdateProperties,
   onPropertiesStart,
+  onCanvasResizeStart,
   onMoveElement,
   onAlignmentStart,
   onLayerContextAction,
   documentRef,
+  onCanvasSettingsOpen,
   activeRightTab: controlledRightTab,
   onRightTabChange: controlledOnRightTabChange,
   onInsertComponent,
@@ -84,6 +87,15 @@ export default function EditorLayout({
     const t = setTimeout(() => setCopyError(null), 4000);
     return () => clearTimeout(t);
   }, [copyError]);
+
+  // Top-nav W×H chip: force the Design tab (the only tab that renders the
+  // Canvas settings section), then let the caller clear the selection. Works
+  // from any state and through both the controlled and internal tab paths.
+  const handleFrameSizeClick = () => {
+    onRightTabChange("design");
+    onCanvasSettingsOpen?.();
+  };
+
   return (
     <div className="h-screen w-screen flex flex-col bg-[#09090b] text-zinc-100 font-[Poppins] selection:bg-blue-500/30 selection:text-white">
       <EditorTopNav
@@ -95,6 +107,7 @@ export default function EditorLayout({
         onUndo={onUndo}
         onRedo={onRedo}
         frameSize={isProjectActive ? frameSize : undefined}
+        onFrameSizeClick={handleFrameSizeClick}
         documentRef={documentRef}
       />
 
@@ -109,11 +122,7 @@ export default function EditorLayout({
       )}
 
       <div className="flex flex-1 overflow-hidden relative">
-        <EditorSidebar
-          frameSize={frameSize}
-          setFrameSize={setFrameSize}
-          onLayerContextAction={onLayerContextAction}
-        />
+        <EditorSidebar onLayerContextAction={onLayerContextAction} />
 
         <main className="flex-1 overflow-auto flex items-center justify-center bg-zinc-950/50 relative shadow-[inset_0_0_100px_rgba(0,0,0,0.5)]">
           {/* Subtle grid pattern for the canvas background */}
@@ -134,6 +143,7 @@ export default function EditorLayout({
           onUpdateProperties={onUpdateProperties}
           onBulkUpdateProperties={onBulkUpdateProperties}
           onPropertiesStart={onPropertiesStart}
+          onCanvasResizeStart={onCanvasResizeStart}
           onMoveElement={onMoveElement}
           onAlignmentStart={onAlignmentStart}
           frameSize={frameSize}
