@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import { layerMenuTheme, menuItemClasses } from "./LayerPanel/theme";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -24,6 +25,15 @@ interface LayerContextMenuProps {
   y: number;
   onClose: () => void;
   items: ContextMenuItem[];
+  /**
+   * Optional direct action handler. When omitted the menu falls back to the
+   * legacy `layer-context-action` window event (used by the layer panel).
+   *
+   * Surfaces that own their own menu (e.g. the canvas) pass this so exactly one
+   * listener per menu handles the click, and no window-wide event has to be
+   * routed back to the right selection.
+   */
+  onAction?: (actionId: string) => void;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -33,6 +43,7 @@ export default function LayerContextMenu({
   y,
   onClose,
   items,
+  onAction,
 }: LayerContextMenuProps) {
   const [subMenuOpen, setSubMenuOpen] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -41,6 +52,21 @@ export default function LayerContextMenu({
     setSubMenuOpen(null);
     onClose();
   }, [onClose]);
+
+  const runAction = useCallback(
+    (actionId: string) => {
+      if (onAction) {
+        onAction(actionId);
+        return;
+      }
+      window.dispatchEvent(
+        new CustomEvent("layer-context-action", {
+          detail: { actionId },
+        }),
+      );
+    },
+    [onAction],
+  );
 
   // Close on click outside or Escape
   useEffect(() => {
@@ -66,7 +92,7 @@ export default function LayerContextMenu({
   return (
     <div
       ref={menuRef}
-      className="fixed z-[100] min-w-[200px] bg-zinc-900/95 backdrop-blur-xl border border-white/10 rounded-lg shadow-[0_8px_30px_rgba(0,0,0,0.4)] py-1.5 animate-in fade-in zoom-in-95 origin-top-left"
+      className={layerMenuTheme.slots.root}
       style={{ left: adjustedPos.x, top: adjustedPos.y }}
     >
       {items.map((item, index) => {
@@ -74,7 +100,7 @@ export default function LayerContextMenu({
           return (
             <div
               key={`sep-${index}`}
-              className="my-1 mx-2 h-px bg-white/5"
+              className={layerMenuTheme.slots.separator}
             />
           );
         }
@@ -85,13 +111,10 @@ export default function LayerContextMenu({
           return (
             <div key={action.id} className="relative">
               <button
-                className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors ${
-                  action.disabled
-                    ? "text-zinc-600 cursor-not-allowed"
-                    : action.destructive
-                      ? "text-red-400 hover:bg-red-500/10 hover:text-red-300"
-                      : "text-zinc-300 hover:bg-white/5 hover:text-zinc-100"
-                }`}
+                className={menuItemClasses({
+                  disabled: action.disabled,
+                  destructive: action.destructive,
+                })}
                 disabled={action.disabled}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -101,9 +124,9 @@ export default function LayerContextMenu({
                 }}
                 onMouseEnter={() => setSubMenuOpen(action.id)}
               >
-                <span className="flex items-center gap-2.5">
+                <span className={layerMenuTheme.slots.itemLabel}>
                   {action.icon && (
-                    <span className="w-4 h-4 flex items-center justify-center text-zinc-400">
+                    <span className={layerMenuTheme.slots.iconSlot}>
                       {action.icon}
                     </span>
                   )}
@@ -118,38 +141,30 @@ export default function LayerContextMenu({
                   strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  className="text-zinc-500 ml-4"
+                  className={layerMenuTheme.slots.chevron}
                 >
                   <path d="m9 18 6-6-6-6" />
                 </svg>
               </button>
               {subMenuOpen === action.id && (
-                <div className="absolute left-full top-0 ml-1 min-w-[180px] bg-zinc-900/95 backdrop-blur-xl border border-white/10 rounded-lg shadow-[0_8px_30px_rgba(0,0,0,0.4)] py-1.5">
+                <div className={layerMenuTheme.slots.submenu}>
                   {action.children.map((child) => (
                     <button
                       key={child.id}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors ${
-                        child.disabled
-                          ? "text-zinc-600 cursor-not-allowed"
-                          : child.destructive
-                            ? "text-red-400 hover:bg-red-500/10 hover:text-red-300"
-                            : "text-zinc-300 hover:bg-white/5 hover:text-zinc-100"
-                      }`}
+                      className={menuItemClasses({
+                        disabled: child.disabled,
+                        destructive: child.destructive,
+                      })}
                       disabled={child.disabled}
                       onClick={() => {
                         if (!child.disabled) {
                           handleClose();
-                          // Trigger the action
-                          window.dispatchEvent(
-                            new CustomEvent("layer-context-action", {
-                              detail: { actionId: child.id },
-                            }),
-                          );
+                          runAction(child.id);
                         }
                       }}
                     >
                       {child.icon && (
-                        <span className="w-4 h-4 flex items-center justify-center text-zinc-400">
+                        <span className={layerMenuTheme.slots.iconSlot}>
                           {child.icon}
                         </span>
                       )}
@@ -170,35 +185,28 @@ export default function LayerContextMenu({
         return (
           <button
             key={action.id}
-            className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors ${
-              action.disabled
-                ? "text-zinc-600 cursor-not-allowed"
-                : action.destructive
-                  ? "text-red-400 hover:bg-red-500/10 hover:text-red-300"
-                  : "text-zinc-300 hover:bg-white/5 hover:text-zinc-100"
-            }`}
+            className={menuItemClasses({
+              disabled: action.disabled,
+              destructive: action.destructive,
+            })}
             disabled={action.disabled}
             onClick={() => {
               if (!action.disabled) {
                 handleClose();
-                window.dispatchEvent(
-                  new CustomEvent("layer-context-action", {
-                    detail: { actionId: action.id },
-                  }),
-                );
+                runAction(action.id);
               }
             }}
           >
-            <span className="flex items-center gap-2.5">
+            <span className={layerMenuTheme.slots.itemLabel}>
               {action.icon && (
-                <span className="w-4 h-4 flex items-center justify-center text-zinc-400">
+                <span className={layerMenuTheme.slots.iconSlot}>
                   {action.icon}
                 </span>
               )}
               <span>{action.label}</span>
             </span>
             {action.shortcut && (
-              <span className="ml-4 text-[10px] text-zinc-500 font-mono tracking-wider">
+              <span className={layerMenuTheme.slots.shortcut}>
                 {action.shortcut}
               </span>
             )}
@@ -259,4 +267,4 @@ function useAdjustedPosition(
 }
 
 // ─── Re-export context menu builder ────────────────────────────────────────────
-export { buildLayerContextMenu, type LayerActionCallbacks } from "./contextMenuItems";
+export { buildLayerContextMenu } from "./contextMenuItems";
