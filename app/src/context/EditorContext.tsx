@@ -58,6 +58,17 @@ export type LayerType = {
   masked?: boolean;
 };
 
+/**
+ * Selection intent for `selectLayer`.
+ *
+ * `boolean` is the legacy Shift flag (`true` = additive toggle). The object form
+ * spells the intent out so callers can forward a full `LayerSelectionMode`.
+ * `range` is informational here: resolving a range needs the visible row order
+ * and the selection anchor, which only the layer panel has — it computes the
+ * slice with `layerSelectionForTarget` and applies it via `setSelection`.
+ */
+export type LayerSelectMode = boolean | { additive?: boolean; range?: boolean };
+
 export type ShapeSubTool = "rect" | "circle" | "triangle" | "star" | "hexagon" | "line";
 
 export type EditorTool =
@@ -73,6 +84,9 @@ export type EditorTool =
 // Import inline to avoid circular dependency
 type ElementProperties = import("../components/editor-canvas/ElementsRenderer").ElementProperties;
 
+/** Canvas (frame) dimensions in SVG user units. */
+export type FrameSize = { width: number; height: number };
+
 export interface EditorState {
   activeTool: EditorTool;
   /** Which shape sub-tool is active when `activeTool === "shape"`. */
@@ -87,7 +101,7 @@ export interface EditorState {
   layers: LayerType[];
   /** Element properties map (layerId → properties) — unified localStorage. */
   elementProperties: Record<string, ElementProperties>;
-  frameSize: { width: number; height: number };
+  frameSize: FrameSize;
   isProjectActive: boolean;
   /** When true, the canvas previews CSS animations on elements that have an animation config. */
   previewAnimation: boolean;
@@ -107,18 +121,28 @@ export interface EditorActions {
   /** Set the paint bucket color. */
   setPaintColor: (color: string) => void;
   setIsEditingText: (editing: boolean) => void;
-  /** @deprecated Use selectLayer(id, isShift) or clearSelection() instead */
+  /** @deprecated Use selectLayer(id, mode), setSelection(ids) or clearSelection() instead */
   setSelectedLayerId: (id: string | null) => void;
   /** Direct setter for selectedLayerIds. */
   setSelectedLayerIds: React.Dispatch<React.SetStateAction<string[]>>;
-  /** Multi-select aware selection: when isShift is true, toggles the layer in/out. */
-  selectLayer: (id: string, isShift: boolean) => void;
+  /**
+   * Multi-select aware selection:
+   * - `true` / `{ additive: true }` toggles the layer in/out of the selection
+   * - `false` (or omitted) / `{ additive: false }` replaces the selection
+   */
+  selectLayer: (id: string, mode?: LayerSelectMode) => void;
+  /**
+   * Replaces the whole selection at once, keeping `selectedLayerId` and the
+   * per-layer `active` flags in sync. Used by the layer panel after resolving a
+   * range/ctrl selection against the visible rows.
+   */
+  setSelection: (ids: readonly string[]) => void;
   /** Clears all selected layers. */
   clearSelection: () => void;
   setLayers: React.Dispatch<React.SetStateAction<LayerType[]>>;
   /** Element properties setter (persists to localStorage). */
   setElementProperties: React.Dispatch<React.SetStateAction<Record<string, ElementProperties>>>;
-  setFrameSize: (size: { width: number; height: number }) => void;
+  setFrameSize: (size: FrameSize) => void;
   setIsProjectActive: (active: boolean) => void;
   setPreviewAnimation: (preview: boolean) => void;
   setScrubTime: (time: number | null) => void;
@@ -214,40 +238,87 @@ export function EditorProvider({ children, initial }: EditorProviderProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layers, elementProperties, frameSize]);
 
-  // Multi-select action: Figma Shift+click behavior
-  const selectLayer = useCallback(
-    (id: string, isShift: boolean) => {
-      if (isShift) {
-        setSelectedLayerIds((prev) => {
-          const next = prev.includes(id)
-            ? prev.filter((lid) => lid !== id)
-            : [...prev, id];
-          // Batch dependent state updates via microtask to avoid nesting setState calls
-          queueMicrotask(() => {
-            setSelectedLayerId(next.length > 0 ? next[0] : null);
-            setLayers((prevLayers) =>
-              prevLayers.map((l) => ({ ...l, active: next.includes(l.id) })),
-            );
-          });
-          return next;
+  // Keep the per-layer `active` flag in sync with a selection. Shared by every
+  // selection path (panel, canvas, rubber-band) so the panel highlight and the
+  // canvas highlight can never drift apart. Returns the previous array when
+  // nothing changed, which keeps re-render loops impossible.
+  const syncActiveFlags = useCallback(
+    (next: readonly string[]) => {
+      setLayers((prevLayers) => {
+        let changed = false;
+        const updated = prevLayers.map((layer) => {
+          const isActive = next.includes(layer.id);
+          if ((layer.active === true) === isActive) return layer;
+          changed = true;
+          return { ...layer, active: isActive };
         });
-      } else {
-        setSelectedLayerIds([id]);
-        setSelectedLayerId(id);
-        setLayers((prevLayers) =>
-          prevLayers.map((l) => ({ ...l, active: l.id === id })),
-        );
-      }
+        return changed ? updated : prevLayers;
+      });
     },
     [setLayers],
   );
 
+  // Raw selection writes (keyboard select-all, ungroup, import, …) must refresh
+  // the per-layer `active` flags too. Without this, `selectedLayerIds` and
+  // `layer.active` drift: Ctrl+A reported "3 layers selected" while only one row
+  // was highlighted and the context menu kept Group/Boolean disabled.
+  const setSelectedLayerIdsSynced = useCallback<React.Dispatch<React.SetStateAction<string[]>>>(
+    (action) => {
+      setSelectedLayerIds((prev) => {
+        const next =
+          typeof action === "function"
+            ? (action as (previous: string[]) => string[])(prev)
+            : action;
+        // Microtask: never schedule a sibling state update from inside an updater.
+        queueMicrotask(() => syncActiveFlags(next));
+        return next;
+      });
+    },
+    [syncActiveFlags],
+  );
+
+  // Replace the selection with an already-resolved id list.
+  const setSelection = useCallback(
+    (ids: readonly string[]) => {
+      const next = [...new Set(ids)];
+      setSelectedLayerIds(next);
+      setSelectedLayerId(next.length > 0 ? next[0] : null);
+      syncActiveFlags(next);
+    },
+    [syncActiveFlags],
+  );
+
+  // Multi-select action: Figma click / Ctrl+click behavior
+  const selectLayer = useCallback(
+    (id: string, mode?: LayerSelectMode) => {
+      const additive =
+        mode === true ||
+        (typeof mode === "object" && mode !== null && mode.additive === true);
+
+      if (!additive) {
+        setSelection([id]);
+        return;
+      }
+
+      setSelectedLayerIds((prev) => {
+        const next = prev.includes(id)
+          ? prev.filter((lid) => lid !== id)
+          : [...prev, id];
+        // Batch dependent state updates via microtask to avoid nesting setState calls
+        queueMicrotask(() => {
+          setSelectedLayerId(next.length > 0 ? next[0] : null);
+          syncActiveFlags(next);
+        });
+        return next;
+      });
+    },
+    [setSelection, syncActiveFlags],
+  );
+
   // Clear all selection
   const clearSelection = useCallback(() => {
-    setSelectedLayerIds([]);
-    setSelectedLayerId(null);
-    setLayers((prev) => prev.map((l) => ({ ...l, active: false })));
-  }, [setLayers]);
+    setSelection([]);
+  }, [setSelection]);
 
   const value: EditorContextValue = {
     activeTool,
@@ -265,8 +336,9 @@ export function EditorProvider({ children, initial }: EditorProviderProps) {
     setPaintColor,
     setIsEditingText,
     setSelectedLayerId,
-    setSelectedLayerIds,
+    setSelectedLayerIds: setSelectedLayerIdsSynced,
     selectLayer,
+    setSelection,
     clearSelection,
     setLayers,
     setElementProperties,
