@@ -1,4 +1,5 @@
 import { useRef, useEffect } from "react";
+import { layerPanelTheme } from "./theme";
 
 // ─── Bulk action toolbar (render inline in LayerPanel) ───────────────────────
 
@@ -17,7 +18,7 @@ export function ToolbarBtn({
     <button
       onClick={onClick}
       title={title}
-      className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-200 hover:bg-white/5 transition-colors"
+      className={layerPanelTheme.toolbarButton}
     >
       {children}
     </button>
