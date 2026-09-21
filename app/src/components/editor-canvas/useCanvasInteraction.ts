@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import {
   MIN_TEXTBOX_SIZE,
@@ -125,6 +125,7 @@ export function useCanvasInteraction({
   onCreatePath,
 }: UseCanvasInteractionParams) {
   const spacePressedRef = useRef(false);
+  const [isSpaceHeld, setIsSpaceHeld] = useState(false);
   const moveHistorySavedRef = useRef(false);
   const lastPenClickRef = useRef<{ t: number; x: number; y: number } | null>(null);
   const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
@@ -144,21 +145,46 @@ export function useCanvasInteraction({
     if (onCreatePath) onCreatePathRef.current = onCreatePath;
   }, [onCreatePath]);
 
-  // ── Spacebar detection ────────────────────────────────────────────────
+  // ── Spacebar detection (Figma-style hold-to-hand) ───────────────────────
   useEffect(() => {
+    const isInputFocused = () => {
+      const target = document.activeElement;
+      if (!target) return false;
+      if (target instanceof HTMLElement) {
+        const tag = target.tagName.toLowerCase();
+        if (tag === "input" || tag === "textarea" || tag === "select") return true;
+        if (target.isContentEditable) return true;
+      }
+      return false;
+    };
     const down = (e: KeyboardEvent) => {
-      if (e.code === "Space" && !e.repeat) spacePressedRef.current = true;
+      if (e.code !== "Space" || e.repeat) return;
+      // Don't hijack space while editing text or typing in an input
+      if (isEditingText) return;
+      if (isInputFocused()) return;
+      // Prevent page scroll and button activation while holding space for hand tool
+      e.preventDefault();
+      spacePressedRef.current = true;
+      setIsSpaceHeld(true);
     };
     const up = (e: KeyboardEvent) => {
-      if (e.code === "Space") spacePressedRef.current = false;
+      if (e.code !== "Space") return;
+      spacePressedRef.current = false;
+      setIsSpaceHeld(false);
+    };
+    const onBlur = () => {
+      spacePressedRef.current = false;
+      setIsSpaceHeld(false);
     };
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
+    window.addEventListener("blur", onBlur);
     return () => {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", onBlur);
     };
-  }, []);
+  }, [isEditingText]);
 
   // ── Pen tool: Enter/Escape to finalize/cancel path ──────────────────────
   useEffect(() => {
@@ -359,6 +385,12 @@ export function useCanvasInteraction({
       // Right-click opens the selection context menu instead of starting a drag.
       // Selection-on-right-click is handled there so a multi-selection survives.
       if (e.button === 2) return;
+      // Figma-style: hold Space to pan even when clicking an element
+      if (e.button === 1 || spacePressedRef.current) {
+        e.stopPropagation();
+        setState((prev) => ({ ...prev, ...startPan(e, viewport) }));
+        return;
+      }
       e.stopPropagation();
       // Guard: missing props should not crash — stale id from a bad document
       const targetProps = elementProperties[layerId];
@@ -407,6 +439,7 @@ export function useCanvasInteraction({
       isEditingText,
       layers,
       elementProperties,
+      viewport,
       onSelectLayer,
       onShiftSelectLayer,
       onEditText,
@@ -807,6 +840,7 @@ export function useCanvasInteraction({
     selectedProps,
     visibleLayerIds,
     spacePressedRef,
+    isSpaceHeld,
     moveHistorySavedRef,
     lastPointerRef,
     pathBuildingRef,

@@ -84,8 +84,10 @@ export default function TextOverlay({
 
   const isAutoWidth = safeWidth === "auto";
   const resizeMode = textAutoResize ?? "WIDTH_AND_HEIGHT";
-  // wrapWidth = 0 disables wrapping (auto), otherwise use the fixed box width.
-  const wrapWidth = isAutoWidth || resizeMode === "WIDTH_AND_HEIGHT" ? 0 : (safeWidth as number);
+  // During editing, disable auto-wrapping entirely: only explicit Enter (\n)
+  // creates a new line. This ensures typing long text stays on one line and
+  // overflows visibly (box expands) instead of wrapping or being hidden.
+  const wrapWidth = 0;
 
   // Use the exact same line-splitting & measurement as the SVG renderer.
   const measureProps = {
@@ -109,7 +111,10 @@ export default function TextOverlay({
   // Renderer uses 0 for empty; editing overlay needs at least one line height so
   // the caret is visible at the same height as a single-line preview.
   const blockHeight = lines.length === 0 ? lineHeightPx : blockHeightRaw;
-  const boxWidth = isAutoWidth ? Math.max(getTextBlockWidth(lines), 20) : (safeWidth as number);
+  const measuredWidth = Math.max(getTextBlockWidth(lines), 20);
+  // During editing, the box expands to fit the longest line (even for fixed-width
+  // HEIGHT mode) so the text never wraps or hides while typing.
+  const boxWidth = isAutoWidth ? measuredWidth : Math.max(measuredWidth, safeWidth as number);
   // For auto-height modes the box hugs the content height (mirrors computeAutoSize);
   // for fixed (NONE) it stays at the stored height.
   const isAutoHeight = resizeMode !== "NONE";
@@ -199,7 +204,8 @@ export default function TextOverlay({
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
         onBlur={handleBlur}
-        className="resize-none overflow-hidden"
+        wrap="off"
+        className="resize-none text-edit-textarea"
         style={{
           position: "absolute",
           left: 0,
@@ -226,12 +232,16 @@ export default function TextOverlay({
           lineHeight: `${lineHeightPx / safeFontSize}`,
           padding: 0,
           margin: 0,
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-          overflowWrap: "break-word",
+          whiteSpace: "pre",
+          wordBreak: "normal",
+          overflowWrap: "normal",
           caretColor: color,
           resize: "none",
           overflow: "hidden",
+          overflowX: "hidden",
+          overflowY: "hidden",
+          scrollbarWidth: "none",
+          msOverflowStyle: "none",
           boxSizing: "border-box",
           display: "block",
         }}

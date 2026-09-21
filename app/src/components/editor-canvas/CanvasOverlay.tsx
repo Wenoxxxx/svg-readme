@@ -222,7 +222,7 @@ export default function CanvasOverlay({
         editingLayerId={editingLayerId}
         rubberBandHighlightedIds={rubberBandHighlightedIds}
         hoveredLayerId={activeTool === "move" ? hoveredLayerId : null}
-        hideSelectionOutlineForId={showResizeOverlay ? selectedId : null}
+        hideSelectionOutlineForId={isEditingText && editingLayerId ? editingLayerId : showResizeOverlay ? selectedId : null}
         showEditPoints={activeTool === "move" && selectedProps?.type === "path"}
         selectedVertex={activeTool === "move" ? selectedVertex : null}
         previewAnimation={previewAnimation}

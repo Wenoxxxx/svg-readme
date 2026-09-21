@@ -76,7 +76,7 @@ const TextElement = memo(function TextElement({
     : getTextXWithinBox(safeProps, boxWidth);
   const lineAnchor = isAutoWidth || resize === "WIDTH_AND_HEIGHT" ? "start" : anchor;
 
-  const showHighlight = (isSelected && !suppressSelectionOutline) || isRubberBandHighlighted;
+  const showHighlight = (isSelected && !suppressSelectionOutline && !isEditing) || isRubberBandHighlighted;
 
   return (
     <g

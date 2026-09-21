@@ -113,6 +113,7 @@ export default function Canvas({
     buildContext,
     selectedId,
     selectedProps,
+    isSpaceHeld,
   } = useCanvasInteraction({
     activeTool,
     selectedShapeKind,
@@ -193,8 +194,10 @@ export default function Canvas({
       selectedProps.type === "image" ||
       selectedProps.type === "path" ||
       selectedProps.type === "text");
+  // Hide resize/rotate handles while editing text — they should only appear
+  // after the user commits (blur / Enter outside) — see TextOverlay comments.
   const showResizeOverlay =
-    (tool.showResizeOverlay ?? false) && (canShowForSingle || multiBounds !== null);
+    !isEditingText && (tool.showResizeOverlay ?? false) && (canShowForSingle || multiBounds !== null);
 
   // ── Rotate transform for selected element overlay ────────────────────────
   // For text, use the visual bounding box (measured via textMeasure) so the overlay hugs the rendered text,
@@ -241,6 +244,7 @@ export default function Canvas({
   // ── Cursor ───────────────────────────────────────────────────────────────
   const getCursor = (): string => {
     if (state.panState) return "grabbing";
+    if (isSpaceHeld) return "grab";
     if (state.rotateState) return getRotateCursor(state);
     if (state.resizeState) return getResizeCursor(state);
     return tool.getCursor?.(state) ?? "default";
