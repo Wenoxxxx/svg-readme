@@ -13,7 +13,14 @@ interface EditorSidebarProps {
 export default function EditorSidebar({
   onLayerContextAction,
 }: EditorSidebarProps) {
-  const { layers, setLayers, setSelection, clearSelection, elementProperties } = useEditor();
+  const {
+    layers,
+    setLayers,
+    setSelection,
+    clearSelection,
+    elementProperties,
+    clipboardLayerCount,
+  } = useEditor();
 
   return (
     <aside className={layerPanelTheme.sidebar}>
@@ -25,6 +32,7 @@ export default function EditorSidebar({
         onContextAction={onLayerContextAction}
         onSelectionChange={setSelection}
         onClearSelection={clearSelection}
+        clipboardCount={clipboardLayerCount}
       />
     </aside>
   );

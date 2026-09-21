@@ -1,5 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { layerMenuTheme, menuItemClasses } from "./LayerPanel/theme";
+import {
+  layerMenuTheme,
+  menuItemClasses,
+  menuShortcutClasses,
+} from "./LayerPanel/theme";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -10,6 +14,11 @@ export interface ContextMenuAction {
   shortcut?: string;
   disabled?: boolean;
   destructive?: boolean;
+  /**
+   * Render with the accent (violet) treatment. The reference menu reserves it
+   * for Create component, the one "primary" action in the list.
+   */
+  accent?: boolean;
   separator?: false;
   children?: ContextMenuAction[];
 }
@@ -114,6 +123,7 @@ export default function LayerContextMenu({
                 className={menuItemClasses({
                   disabled: action.disabled,
                   destructive: action.destructive,
+                  accent: action.accent,
                 })}
                 disabled={action.disabled}
                 onClick={(e) => {
@@ -154,6 +164,7 @@ export default function LayerContextMenu({
                       className={menuItemClasses({
                         disabled: child.disabled,
                         destructive: child.destructive,
+                        accent: child.accent,
                       })}
                       disabled={child.disabled}
                       onClick={() => {
@@ -163,14 +174,21 @@ export default function LayerContextMenu({
                         }
                       }}
                     >
-                      {child.icon && (
-                        <span className={layerMenuTheme.slots.iconSlot}>
-                          {child.icon}
-                        </span>
-                      )}
-                      <span>{child.label}</span>
+                      <span className={layerMenuTheme.slots.itemLabel}>
+                        {child.icon && (
+                          <span className={layerMenuTheme.slots.iconSlot}>
+                            {child.icon}
+                          </span>
+                        )}
+                        <span>{child.label}</span>
+                      </span>
                       {child.shortcut && (
-                        <span className="ml-auto text-[10px] text-zinc-500 font-mono">
+                        <span
+                          className={menuShortcutClasses({
+                            disabled: child.disabled,
+                            accent: child.accent,
+                          })}
+                        >
                           {child.shortcut}
                         </span>
                       )}
@@ -188,6 +206,7 @@ export default function LayerContextMenu({
             className={menuItemClasses({
               disabled: action.disabled,
               destructive: action.destructive,
+              accent: action.accent,
             })}
             disabled={action.disabled}
             onClick={() => {
@@ -206,7 +225,12 @@ export default function LayerContextMenu({
               <span>{action.label}</span>
             </span>
             {action.shortcut && (
-              <span className={layerMenuTheme.slots.shortcut}>
+              <span
+                className={menuShortcutClasses({
+                  disabled: action.disabled,
+                  accent: action.accent,
+                })}
+              >
                 {action.shortcut}
               </span>
             )}
@@ -266,5 +290,3 @@ function useAdjustedPosition(
   return pos;
 }
 
-// ─── Re-export context menu builder ────────────────────────────────────────────
-export { buildLayerContextMenu } from "./contextMenuItems";

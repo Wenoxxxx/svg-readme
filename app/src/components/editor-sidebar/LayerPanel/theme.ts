@@ -196,15 +196,11 @@ export const layerPanelTheme = {
   searchInput:
     "w-full bg-zinc-900/80 border border-white/5 rounded-md pl-8 pr-8 py-1.5 text-xs text-zinc-300 placeholder-zinc-600 outline-none focus:border-blue-500/40 focus:ring-1 focus:ring-blue-500/20 transition-all",
   searchClear: "absolute right-2.5 text-zinc-600 hover:text-zinc-300 transition-colors",
-  toolbar: "px-5 py-2 flex items-center gap-1 border-b border-white/5",
   viewport:
     "flex-1 relative overflow-y-auto overflow-y-scroll scrollbar-thin scrollbar-thumb-gray-500 scrollbar-track-transparent",
   list: "relative mx-3",
   empty: "px-5 py-8 text-center",
   emptyText: "text-xs text-zinc-500",
-  /** The small icon button used by the bulk-action toolbar. */
-  toolbarButton:
-    "p-1.5 rounded-md text-zinc-500 hover:text-zinc-200 hover:bg-white/5 transition-colors",
   /** The left `<aside>` shell the panel is mounted in. */
   sidebar:
     "w-72 shrink-0 border-r border-white/5 bg-[#09090b]/95 backdrop-blur-xl flex flex-col z-10 shadow-[4px_0_24px_rgba(0,0,0,0.2)]",
@@ -214,30 +210,61 @@ export const layerPanelTheme = {
 
 export const layerMenuTheme = {
   slots: {
-    root: "fixed z-[100] min-w-[200px] bg-zinc-900/95 backdrop-blur-xl border border-white/10 rounded-lg shadow-[0_8px_30px_rgba(0,0,0,0.4)] py-1.5 animate-in fade-in zoom-in-95 origin-top-left",
-    separator: "my-1 mx-2 h-px bg-white/5",
+    root: "fixed z-[100] min-w-[240px] bg-zinc-900/95 backdrop-blur-xl border border-white/10 rounded-lg shadow-[0_8px_30px_rgba(0,0,0,0.4)] py-1.5 animate-in fade-in zoom-in-95 origin-top-left",
+    separator: "my-2 mx-2.5 h-px bg-white/[0.06]",
     submenu:
-      "absolute left-full top-0 ml-1 min-w-[180px] bg-zinc-900/95 backdrop-blur-xl border border-white/10 rounded-lg shadow-[0_8px_30px_rgba(0,0,0,0.4)] py-1.5",
-    item: "w-full flex items-center justify-between px-3 py-2 text-sm transition-colors",
+      "absolute left-full top-0 ml-1 min-w-[200px] bg-zinc-900/95 backdrop-blur-xl border border-white/10 rounded-lg shadow-[0_8px_30px_rgba(0,0,0,0.4)] py-1.5",
+    item: "w-full flex items-center justify-between px-4 py-2.5 text-sm transition-colors",
     itemLabel: "flex items-center gap-2.5",
     iconSlot: "w-4 h-4 flex items-center justify-center text-zinc-400",
-    shortcut: "ml-4 text-[10px] text-zinc-500 font-mono tracking-wider",
+    shortcut: "ml-4 text-[11px] font-mono tracking-wide",
     chevron: "text-zinc-500 ml-4",
   },
 } as const;
 
-/** Variant inputs for a context-menu entry's button class. */
+/**
+ * Variant inputs for a context-menu entry's button class.
+ *
+ * `accent` is the reference menu's violet treatment for the one primary action
+ * (Create component). It composes with `disabled`: a disabled accent row keeps
+ * the violet hue but drops to a muted opacity, which is how the reference draws
+ * Create component when the selection cannot become a component.
+ */
 export function menuItemClasses({
   disabled = false,
   destructive = false,
+  accent = false,
 }: {
   disabled?: boolean;
   destructive?: boolean;
+  accent?: boolean;
 } = {}): string {
-  const state = disabled
-    ? "text-zinc-600 cursor-not-allowed"
-    : destructive
-      ? "text-red-400 hover:bg-red-500/10 hover:text-red-300"
-      : "text-zinc-300 hover:bg-white/5 hover:text-zinc-100";
+  const state = accent
+    ? disabled
+      ? "text-violet-400/45 cursor-not-allowed"
+      : "text-violet-300 hover:bg-violet-500/10 hover:text-violet-200"
+    : disabled
+      ? "text-zinc-600 cursor-not-allowed"
+      : destructive
+        ? "text-red-400 hover:bg-red-500/10 hover:text-red-300"
+        : "text-zinc-300 hover:bg-white/5 hover:text-zinc-100";
   return join(layerMenuTheme.slots.item, state);
+}
+
+/** Shortcut label styling, tinted to follow its row's accent treatment. */
+export function menuShortcutClasses({
+  disabled = false,
+  accent = false,
+}: {
+  disabled?: boolean;
+  accent?: boolean;
+} = {}): string {
+  const state = accent
+    ? disabled
+      ? "text-violet-400/45"
+      : "text-violet-400/80"
+    : disabled
+      ? "text-zinc-700"
+      : "text-zinc-500";
+  return join(layerMenuTheme.slots.shortcut, state);
 }

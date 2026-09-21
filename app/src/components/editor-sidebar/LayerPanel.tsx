@@ -1,16 +1,10 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import {
   Stack,
-  Eye,
-  LockOpen,
   Plus,
   FolderPlus,
   MagnifyingGlass,
   X,
-  ArrowsInSimple,
-  ArrowsOutSimple,
-  EyeSlash as EyeOffAll,
-  Lock as LockAll,
 } from "@phosphor-icons/react";
 import LayerContextMenu, { type ContextMenuItem } from "./LayerContextMenu";
 import { buildSelectionContextMenu } from "./contextMenuItems";
@@ -18,7 +12,6 @@ import type { LayerType } from "../../context/EditorContext";
 import type { ElementProperties } from "../editor-canvas/ElementsRenderer";
 
 import { LayerItem } from "./LayerPanel/LayerItem";
-import { ToolbarBtn, ContextActionListener } from "./LayerPanel/Toolbar";
 import {
   buildLayerTreeIndex,
   layerSelectionForTarget,
@@ -35,6 +28,7 @@ import type {
   LayerSelectionMode,
 } from "../../lib/editor/layerTree/types";
 import { reorderChild } from "../../lib/editor/documentActions";
+import { isClipboardReadable } from "../../lib/editor/layerOps/clipboardOps";
 import { LAYER_TREE_ROW_HEIGHT } from "./LayerPanel/geometry";
 import { layerPanelTheme as chrome } from "./LayerPanel/theme";
 import { useRowVirtualizer } from "./LayerPanel/useRowVirtualizer";
@@ -69,6 +63,12 @@ interface LayerPanelProps {
   onSelectionChange?: (ids: string[]) => void;
   /** Called when clicking empty space in the panel — clears the selection. */
   onClearSelection?: () => void;
+  /**
+   * Top-level layers on the editor clipboard; 0/undefined when empty. The
+   * context menu uses it to gate Paste here and Paste to replace, exactly like
+   * the canvas menu does.
+   */
+  clipboardCount?: number;
 }
 
 // ─── Drop indicator types ─────────────────────────────────────────────────────
@@ -111,6 +111,7 @@ export default function LayerPanel({
   onContextAction,
   onSelectionChange,
   onClearSelection,
+  clipboardCount = 0,
 }: LayerPanelProps) {
   const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<DragOverState | null>(null);
@@ -301,6 +302,11 @@ export default function LayerPanel({
       layers,
       elementProperties,
       anchorLayerId: layerId,
+      // The panel only knows the *internal* clipboard; the OS clipboard can
+      // also hold a payload, so Paste here follows the same availability rule
+      // the keyboard path uses.
+      hasClipboard: clipboardCount > 0 || isClipboardReadable(),
+      clipboardCount,
     });
   };
 
@@ -695,35 +701,6 @@ export default function LayerPanel({
     );
   }
 
-  // ── Bulk layer actions ───────────────────────────────────────────────────
-  const setAllCollapsed = (collapsed: boolean) => {
-    setLayers((prev) =>
-      prev.map((l) =>
-        l.type === "group" ? { ...l, collapsed } : l,
-      ),
-    );
-  };
-
-  const setAllVisible = (visible: boolean) => {
-    setLayers((prev) =>
-      prev.map((l) => {
-        if (l.visible === visible) return l;
-        onToggleVisibility?.(l.id, visible);
-        return { ...l, visible };
-      }),
-    );
-  };
-
-  const setAllLocked = (locked: boolean) => {
-    setLayers((prev) =>
-      prev.map((l) => {
-        if (l.locked === locked) return l;
-        onToggleLock?.(l.id, locked);
-        return { ...l, locked };
-      }),
-    );
-  };
-
   return (
     <div className={chrome.root} data-tour="layers">
       <div className={chrome.header}>
@@ -772,49 +749,6 @@ export default function LayerPanel({
         </div>
       </div>
 
-      {/* Bulk action toolbar — single toggle per action, icon reflects current state */}
-      {(() => {
-        const groups = layers.filter((l) => l.type === "group");
-        const allCollapsed = groups.length > 0 && groups.every((g) => g.collapsed);
-        const allVisible = layers.length > 0 && layers.every((l) => l.visible);
-        const allLocked = layers.length > 0 && layers.every((l) => l.locked);
-        return (
-          <div className={chrome.toolbar}>
-            <ToolbarBtn
-              onClick={() => setAllCollapsed(allCollapsed ? false : true)}
-              title={allCollapsed ? "Expand all groups" : "Collapse all groups"}
-            >
-              {allCollapsed ? (
-                <ArrowsOutSimple className="w-3.5 h-3.5" />
-              ) : (
-                <ArrowsInSimple className="w-3.5 h-3.5" />
-              )}
-            </ToolbarBtn>
-            <div className="flex-1" />
-            <ToolbarBtn
-              onClick={() => setAllVisible(!allVisible)}
-              title={allVisible ? "Hide all layers" : "Show all layers"}
-            >
-              {allVisible ? (
-                <EyeOffAll className="w-3.5 h-3.5" />
-              ) : (
-                <Eye className="w-3.5 h-3.5" />
-              )}
-            </ToolbarBtn>
-            <ToolbarBtn
-              onClick={() => setAllLocked(!allLocked)}
-              title={allLocked ? "Unlock all layers" : "Lock all layers"}
-            >
-              {allLocked ? (
-                <LockOpen className="w-3.5 h-3.5" />
-              ) : (
-                <LockAll className="w-3.5 h-3.5" />
-              )}
-            </ToolbarBtn>
-          </div>
-        );
-      })()}
-
       <div
         ref={scrollRef}
         onScroll={onScroll}
@@ -860,15 +794,12 @@ export default function LayerPanel({
             y={contextMenu.y}
             onClose={() => setContextMenu(null)}
             items={buildMenuItems(contextMenu.layerId)}
+            // Same dispatch shape as the canvas menu: the menu itself hands the
+            // command id back, so there is no window-wide event to mis-route.
+            onAction={handleContextAction}
           />
         </>
       )}
-
-      {/* Context menu action listener */}
-      <ContextActionListener
-        active={contextMenu !== null}
-        onAction={(actionId) => handleContextAction(actionId)}
-      />
     </div>
   );
 }

@@ -143,59 +143,6 @@ describe("LayerPanel — child count badge", () => {
   });
 });
 
-describe("LayerPanel — collapse-all / expand-all", () => {
-  it("collapses all groups", () => {
-    renderPanel(fixtureLayers());
-    const btn = screen.getByTitle(/collapse all/i);
-    fireEvent.click(btn);
-    // Children of the group should be hidden
-    expect(screen.queryByText("Circle")).toBeNull();
-    expect(screen.queryByText("Star")).toBeNull();
-    // Root layers remain
-    expect(screen.getByText("Background")).toBeTruthy();
-    expect(screen.getByText("Footer Text")).toBeTruthy();
-  });
-
-  it("expands all groups after collapsing", () => {
-    renderPanel(fixtureLayers());
-    fireEvent.click(screen.getByTitle(/collapse all/i));
-    expect(screen.queryByText("Circle")).toBeNull();
-    fireEvent.click(screen.getByTitle(/expand all/i));
-    expect(screen.getByText("Circle")).toBeTruthy();
-    expect(screen.getByText("Star")).toBeTruthy();
-  });
-});
-
-describe("LayerPanel — show/hide all", () => {
-  it("hides all layers", () => {
-    const { latest } = renderPanel(fixtureLayers());
-    fireEvent.click(screen.getByTitle(/hide all/i));
-    expect(latest().every((l) => l.visible === false)).toBe(true);
-  });
-
-  it("shows all layers again", () => {
-    const { latest } = renderPanel(fixtureLayers());
-    fireEvent.click(screen.getByTitle(/hide all/i));
-    fireEvent.click(screen.getByTitle(/show all/i));
-    expect(latest().every((l) => l.visible === true)).toBe(true);
-  });
-});
-
-describe("LayerPanel — lock all", () => {
-  it("locks all layers", () => {
-    const { latest } = renderPanel(fixtureLayers());
-    fireEvent.click(screen.getByTitle("Lock all layers"));
-    expect(latest().every((l) => l.locked === true)).toBe(true);
-  });
-
-  it("unlocks all layers", () => {
-    const { latest } = renderPanel(fixtureLayers());
-    fireEvent.click(screen.getByTitle("Lock all layers"));
-    fireEvent.click(screen.getByTitle("Unlock all layers"));
-    expect(latest().every((l) => l.locked === false)).toBe(true);
-  });
-});
-
 describe("LayerPanel — auto-expand on hover", () => {
   it("expands a collapsed group when dragging over it", () => {
     const { latest } = renderPanel(

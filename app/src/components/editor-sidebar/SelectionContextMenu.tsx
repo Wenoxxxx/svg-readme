@@ -15,6 +15,10 @@ export interface SelectionContextMenuProps {
    * the whole selection, exactly like the layer tab's menu.
    */
   anchorLayerId?: string | null;
+  /** Whether the editor clipboard holds layers (gates the paste rows). */
+  hasClipboard?: boolean;
+  /** Top-level clipboard layer count (gates Paste to replace). */
+  clipboardCount?: number;
   onClose: () => void;
   /** Receives the command id (`duplicate`, `booleanUnion`, …). */
   onAction: (actionId: string) => void;
@@ -35,14 +39,23 @@ export default function SelectionContextMenu({
   x,
   y,
   anchorLayerId = null,
+  hasClipboard,
+  clipboardCount,
   onClose,
   onAction,
 }: SelectionContextMenuProps) {
   const { layers, elementProperties } = useEditor();
 
   const items = useMemo(
-    () => buildSelectionContextMenu({ layers, elementProperties, anchorLayerId }),
-    [layers, elementProperties, anchorLayerId],
+    () =>
+      buildSelectionContextMenu({
+        layers,
+        elementProperties,
+        anchorLayerId,
+        hasClipboard,
+        clipboardCount,
+      }),
+    [layers, elementProperties, anchorLayerId, hasClipboard, clipboardCount],
   );
 
   // Nothing selected → no menu (the caller normally prevents this).
