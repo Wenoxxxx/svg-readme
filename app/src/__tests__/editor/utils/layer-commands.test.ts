@@ -5,6 +5,7 @@ import {
   runLayerCommand,
   type LayerCommandId,
 } from "../../../lib/editor/commands/layerCommands";
+import { formatShortcut } from "../../../lib/editor/commands/shortcuts";
 import { computeSelectionCapabilities } from "../../../lib/editor/selectionCapabilities";
 import type { LayerType } from "../../../context/EditorContext";
 import type {
@@ -78,7 +79,12 @@ const textProps = (): TextElementProperties => ({
   textAlignVertical: "top",
 });
 
-/** Compute capabilities + commands the way LayerPanel does. */
+/**
+ * Compute capabilities + commands the way LayerPanel does.
+ *
+ * Shortcuts are formatted for Windows so the assertions are platform-stable
+ * (the panel picks the platform up from the browser at runtime).
+ */
 function commandsFor(
   layers: LayerType[],
   selectedLayerIds: string[],
@@ -89,7 +95,7 @@ function commandsFor(
     selectedLayerIds,
     elementProperties,
   });
-  return buildLayerCommands({ capabilities });
+  return buildLayerCommands({ capabilities, platform: "windows" });
 }
 
 function enabledIds(commands: Record<LayerCommandId, { enabled: boolean }>): LayerCommandId[] {
@@ -167,6 +173,29 @@ describe("layerCommands enabled matrix", () => {
     expect(commands.outlineStroke.enabled).toBe(true);
     expect(commands.outlineText.enabled).toBe(false);
     expect(commands.toggleMask.enabled).toBe(false);
+    // Clipboard/transform commands that need only a selection.
+    expect(commands.copy.enabled).toBe(true);
+    expect(commands.cut.enabled).toBe(true);
+    expect(commands.addAutoLayout.enabled).toBe(true);
+    expect(commands.createComponent.enabled).toBe(true);
+    expect(commands.flipHorizontal.enabled).toBe(true);
+    expect(commands.flipVertical.enabled).toBe(true);
+    // Nothing on the clipboard yet → both paste commands stay off.
+    expect(commands.pasteHere.enabled).toBe(false);
+    expect(commands.pasteToReplace.enabled).toBe(false);
+  });
+
+  it("enables Paste here purely from clipboard content", () => {
+    const emptyDoc = computeSelectionCapabilities({
+      layers: [],
+      selectedLayerIds: [],
+      hasClipboard: true,
+      clipboardCount: 1,
+    });
+    const commands = buildLayerCommands({ capabilities: emptyDoc });
+    expect(commands.pasteHere.enabled).toBe(true);
+    expect(commands.pasteToReplace.enabled).toBe(false);
+    expect(commands.copy.enabled).toBe(false);
   });
 
   it("enables group + boolean for two same-parent shapes", () => {
@@ -240,6 +269,137 @@ describe("layerCommands enabled matrix", () => {
   });
 });
 
+// ─── Reference menu surface ───────────────────────────────────────────────────
+
+/** The commands the reference context menu renders, top to bottom. */
+const REFERENCE_COMMAND_ORDER: LayerCommandId[] = [
+  "copy",
+  "cut",
+  "pasteHere",
+  "pasteToReplace",
+  "duplicate",
+  "delete",
+  "bringForward",
+  "bringToFront",
+  "sendBackward",
+  "sendToBack",
+  "group",
+  "wrapInFrame",
+  "addAutoLayout",
+  "toggleMask",
+  "flatten",
+  "outlineText",
+  "outlineStroke",
+  "createComponent",
+  "toggleVisibility",
+  "toggleLock",
+  "flipHorizontal",
+  "flipVertical",
+  "copyAsPng",
+  "copyAsSvg",
+];
+
+describe("layerCommands reference surface", () => {
+  it("defines every command the reference menu renders", () => {
+    const commands = commandsFor([layer("a")], ["a"], { a: shapeProps() });
+    for (const id of REFERENCE_COMMAND_ORDER) {
+      expect(commands[id], `missing command: ${id}`).toBeDefined();
+    }
+  });
+
+  it("labels each command the way the reference menu does", () => {
+    const commands = commandsFor([layer("a")], ["a"], { a: shapeProps() });
+    const expected: Partial<Record<LayerCommandId, string>> = {
+      copy: "Copy",
+      cut: "Cut",
+      pasteHere: "Paste here",
+      pasteToReplace: "Paste to replace",
+      duplicate: "Duplicate",
+      delete: "Delete",
+      bringForward: "Bring forward",
+      bringToFront: "Bring to front",
+      sendBackward: "Send backward",
+      sendToBack: "Send to back",
+      group: "Group selection",
+      wrapInFrame: "Frame selection",
+      addAutoLayout: "Add auto layout",
+      toggleMask: "Use as mask",
+      flatten: "Flatten",
+      outlineText: "Outline text",
+      outlineStroke: "Outline stroke",
+      createComponent: "Create component",
+      toggleVisibility: "Show/Hide",
+      toggleLock: "Lock/Unlock",
+      flipHorizontal: "Flip horizontal",
+      flipVertical: "Flip vertical",
+    };
+    for (const [id, label] of Object.entries(expected)) {
+      expect(commands[id as LayerCommandId].label).toBe(label);
+    }
+  });
+
+  it("renders the reference shortcuts with Windows key names", () => {
+    const commands = commandsFor([layer("a")], ["a"], { a: shapeProps() });
+    const expected: Partial<Record<LayerCommandId, string>> = {
+      copy: "Ctrl+C",
+      cut: "Ctrl+X",
+      pasteHere: "Ctrl+V",
+      duplicate: "Ctrl+D",
+      delete: "⌫",
+      bringForward: "Ctrl+]",
+      bringToFront: "]",
+      sendBackward: "Ctrl+[",
+      sendToBack: "[",
+      group: "Ctrl+G",
+      wrapInFrame: "Ctrl+Alt+G",
+      addAutoLayout: "Shift+A",
+      toggleMask: "Ctrl+Alt+M",
+      flatten: "Alt+Shift+F",
+      createComponent: "Ctrl+Alt+K",
+      toggleVisibility: "Ctrl+Shift+H",
+      toggleLock: "Ctrl+Shift+L",
+      flipHorizontal: "Shift+H",
+      flipVertical: "Shift+V",
+    };
+    for (const [id, shortcut] of Object.entries(expected)) {
+      expect(commands[id as LayerCommandId].shortcut).toBe(shortcut);
+    }
+  });
+
+  it("leaves Paste to replace and the outline commands shortcut-less", () => {
+    const commands = commandsFor([layer("a")], ["a"], { a: shapeProps() });
+    expect(commands.pasteToReplace.shortcut).toBeUndefined();
+    expect(commands.outlineText.shortcut).toBeUndefined();
+    expect(commands.outlineStroke.shortcut).toBeUndefined();
+  });
+});
+
+// ─── Shortcut formatting ───────────────────────────────────────────────
+
+describe("formatShortcut", () => {
+  it("spells modifiers out on Windows and Linux", () => {
+    expect(formatShortcut("Mod+C", "windows")).toBe("Ctrl+C");
+    expect(formatShortcut("Mod+Alt+G", "windows")).toBe("Ctrl+Alt+G");
+    expect(formatShortcut("Alt+Shift+F", "windows")).toBe("Alt+Shift+F");
+    expect(formatShortcut("Shift+A", "windows")).toBe("Shift+A");
+    expect(formatShortcut("Mod+Shift+H", "linux")).toBe("Ctrl+Shift+H");
+  });
+
+  it("uses the macOS glyphs, gluing them to the key", () => {
+    expect(formatShortcut("Mod+C", "mac")).toBe("⌘C");
+    expect(formatShortcut("Mod+Alt+G", "mac")).toBe("⌘⌥G");
+    expect(formatShortcut("Alt+Shift+F", "mac")).toBe("⌥⇧F");
+    expect(formatShortcut("Shift+H", "mac")).toBe("⇧H");
+  });
+
+  it("passes bare keys through and maps Backspace to the glyph", () => {
+    expect(formatShortcut("]", "windows")).toBe("]");
+    expect(formatShortcut("[", "mac")).toBe("[");
+    expect(formatShortcut("Backspace", "windows")).toBe("⌫");
+    expect(formatShortcut("Backspace", "mac")).toBe("⌫");
+  });
+});
+
 // ─── Contextual labels ────────────────────────────────────────────────────────
 
 describe("layerCommands contextual labels", () => {
@@ -247,28 +407,23 @@ describe("layerCommands contextual labels", () => {
     const commands = commandsFor([layer("a")], ["a"]);
     expect(commands.toggleVisibility.label).toBe("Show/Hide");
     expect(commands.toggleLock.label).toBe("Lock/Unlock");
-    expect(commands.toggleMask.label).toBe("Use as Mask");
+    expect(commands.toggleMask.label).toBe("Use as mask");
   });
 
-  it("words Show/Hide and Lock/Unlock from the target state", () => {
+  it("keeps the combined Show/Hide and Lock/Unlock labels in every state", () => {
     const capabilities = computeSelectionCapabilities({
       layers: [layer("a")],
       selectedLayerIds: ["a"],
     });
 
-    const visibleUnlocked = buildLayerCommands({
+    // The reference menu always reads "Show/Hide" / "Lock/Unlock" — the row
+    // toggles, so the wording never flips to a single verb.
+    const commands = buildLayerCommands({
       capabilities,
-      context: { targetVisible: true, targetLocked: false },
+      context: { targetMasked: false },
     });
-    expect(visibleUnlocked.toggleVisibility.label).toBe("Hide");
-    expect(visibleUnlocked.toggleLock.label).toBe("Lock");
-
-    const hiddenLocked = buildLayerCommands({
-      capabilities,
-      context: { targetVisible: false, targetLocked: true },
-    });
-    expect(hiddenLocked.toggleVisibility.label).toBe("Show");
-    expect(hiddenLocked.toggleLock.label).toBe("Unlock");
+    expect(commands.toggleVisibility.label).toBe("Show/Hide");
+    expect(commands.toggleLock.label).toBe("Lock/Unlock");
   });
 
   it("words the mask command from the target mask state", () => {
@@ -285,8 +440,8 @@ describe("layerCommands contextual labels", () => {
       capabilities,
       context: { targetMasked: true },
     });
-    expect(unmasked.toggleMask.label).toBe("Use as Mask");
-    expect(masked.toggleMask.label).toBe("Remove Mask");
+    expect(unmasked.toggleMask.label).toBe("Use as mask");
+    expect(masked.toggleMask.label).toBe("Remove mask");
   });
 });
 
