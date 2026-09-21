@@ -1,10 +1,15 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   TextElementProperties,
   ImageElementProperties,
   ElementProperties,
 } from "../../../components/editor-canvas/ElementsRenderer";
 import { duplicateLayersWithChildren } from "../../../lib/editor/documentActions";
+import {
+  isClipboardReadable,
+  pasteInPlace,
+  replaceLayers,
+} from "../../../lib/editor/layerOps/clipboardOps";
 import { parseSvgMarkup } from "../../../lib/importSvg";
 import { buildSvgString } from "../../../lib/export";
 import { DEFAULT_TEXT_PROPS, DEFAULT_TEXT_HEIGHT } from "../../../components/editor-canvas/types";
@@ -27,6 +32,11 @@ interface UseEditorClipboardParams {
   setElementProperties: React.Dispatch<React.SetStateAction<Record<string, ElementProperties>>>;
   setSelectedLayerIds: React.Dispatch<React.SetStateAction<string[]>>;
   setSelectedLayerId: (id: string | null) => void;
+  /**
+   * Publishes how many top-level layers the clipboard holds so the context
+   * menus can enable/disable the paste rows without owning the clipboard.
+   */
+  onClipboardChange?: (layerCount: number) => void;
 }
 
 const PASTE_OFFSET = 20;
@@ -47,8 +57,27 @@ export function useEditorClipboard({
   setElementProperties,
   setSelectedLayerIds,
   setSelectedLayerId,
+  onClipboardChange,
 }: UseEditorClipboardParams) {
   const [clipboard, setClipboard] = useState<ClipboardState | null>(null);
+
+  /**
+   * Top-level layers in the clipboard — the payload layers whose parent is not
+   * part of the copied set. This is what "Paste to replace" matches against the
+   * selection size, so a copied group counts as one layer, not as its children.
+   */
+  const clipboardCount = useMemo(() => {
+    if (!clipboard) return 0;
+    const clipIds = new Set(clipboard.layers.map((layer) => layer.id));
+    return clipboard.layers.filter((layer) => {
+      const parentId = layer.parentId ?? null;
+      return parentId === null || !clipIds.has(parentId);
+    }).length;
+  }, [clipboard]);
+
+  useEffect(() => {
+    onClipboardChange?.(clipboardCount);
+  }, [clipboardCount, onClipboardChange]);
 
   /** Shared paste flow: remaps ids + parentIds, offsets positions, appends + selects. */
   const applyPaste = useCallback(
@@ -248,8 +277,80 @@ export function useEditorClipboard({
     if (!pasted && clipboard) applyPaste(clipboard);
   }, [clipboard, applyPaste, pasteSvgMarkup, pasteAsText, pasteAsImage]);
 
+  // ── Paste here ──────────────────────────────────────────────────────────
+  // Drops the copied layers back where they came from, with no cascade offset.
+  //
+  // When this app has not copied anything yet there is still the OS clipboard to
+  // consider — that is the same command ("paste"), so it falls through to the
+  // full paste flow, which handles our own JSON payload, raw SVG, plain text and
+  // images. Splitting them would make Ctrl+V silently do nothing whenever the
+  // content came from outside the editor.
+  const handlePasteHere = useCallback(() => {
+    if (!clipboard) {
+      void handlePaste();
+      return;
+    }
+    const result = pasteInPlace(layers, elementProperties, clipboard);
+    if (!result) return;
+
+    saveToHistory();
+    setLayers(result.updatedLayers);
+    setElementProperties(result.updatedProperties);
+    setSelectedLayerIds(result.selectedIds);
+    setSelectedLayerId(result.selectedIds[0] ?? null);
+  }, [
+    clipboard,
+    layers,
+    elementProperties,
+    handlePaste,
+    saveToHistory,
+    setLayers,
+    setElementProperties,
+    setSelectedLayerIds,
+    setSelectedLayerId,
+  ]);
+
+  // ── Paste to replace ────────────────────────────────────────────────────
+  // Swaps the selection for the clipboard 1:1. The capability layer already
+  // refuses mismatched counts, so a failed match here is a no-op rather than a
+  // partial apply.
+  const handlePasteToReplace = useCallback(() => {
+    if (!clipboard) return;
+    const result = replaceLayers(
+      layers,
+      elementProperties,
+      selectedLayerIds,
+      clipboard,
+    );
+    if (!result) return;
+
+    saveToHistory();
+    setLayers(result.updatedLayers);
+    setElementProperties(result.updatedProperties);
+    setSelectedLayerIds(result.selectedIds);
+    setSelectedLayerId(result.selectedIds[0] ?? null);
+  }, [
+    clipboard,
+    layers,
+    elementProperties,
+    selectedLayerIds,
+    saveToHistory,
+    setLayers,
+    setElementProperties,
+    setSelectedLayerIds,
+    setSelectedLayerId,
+  ]);
+
   return {
     handleCopy,
     handlePaste,
+    handlePasteHere,
+    handlePasteToReplace,
+    /** Whether the internal clipboard holds anything. */
+    hasClipboard: clipboard !== null && clipboard.layers.length > 0,
+    /** Top-level layer count, used to gate Paste to replace. */
+    clipboardCount,
+    /** Whether the OS clipboard could be read (enables Paste here early). */
+    clipboardReadable: isClipboardReadable(),
   };
 }

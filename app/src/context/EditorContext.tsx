@@ -43,6 +43,32 @@ export function clearEditorStorage(): void {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+/**
+ * Auto layout settings for a container (group/frame) layer.
+ *
+ * Mirrors OpenPencil's flex auto layout: children are laid out along one axis
+ * with a fixed gap, inset by padding, and aligned on the cross axis. This app
+ * renders to SVG with absolutely positioned elements, so the layout is resolved
+ * eagerly — `applyAutoLayout` writes the resulting x/y onto each child instead
+ * of maintaining a live layout engine.
+ */
+export interface AutoLayoutSettings {
+  direction: "horizontal" | "vertical";
+  /** Space between adjacent children, in canvas units. */
+  gap: number;
+  /** Inset applied inside the container bounds. */
+  padding: { top: number; right: number; bottom: number; left: number };
+  /** Cross-axis alignment of children within the container. */
+  alignItems: "start" | "center" | "end";
+}
+
+export const DEFAULT_AUTO_LAYOUT: AutoLayoutSettings = {
+  direction: "vertical",
+  gap: 12,
+  padding: { top: 16, right: 16, bottom: 16, left: 16 },
+  alignItems: "start",
+};
+
 export type LayerType = {
   id: string;
   name: string;
@@ -56,6 +82,22 @@ export type LayerType = {
   collapsed?: boolean;
   /** Whether this layer acts as a mask for its group children */
   masked?: boolean;
+  /**
+   * Only for group layers: the flex layout that positions this group's
+   * children. Absent means the children keep their own coordinates.
+   */
+  autoLayout?: AutoLayoutSettings;
+  /**
+   * This group is a component master ("Create component"). Masters are the
+   * source of truth for every instance that references `componentId`.
+   */
+  isComponent?: boolean;
+  /**
+   * Instance link: this layer was duplicated from the component master with
+   * this id. Editing the master is reflected in instances via the panel's
+   * component badge; a missing master makes the layer a detached copy.
+   */
+  componentId?: string;
 };
 
 /**
@@ -113,6 +155,15 @@ export interface EditorState {
   currentProjectId: string | null;
   /** Editable project name shown in the navbar. */
   projectName: string;
+  /**
+   * How many top-level layers the editor clipboard holds; 0 when empty.
+   *
+   * The clipboard content itself lives with the copy/paste hook, but the
+   * *availability* has to be visible to every surface that builds the layer
+   * context menu (layer panel rows and the canvas), because it decides whether
+   * Paste here / Paste to replace are enabled.
+   */
+  clipboardLayerCount: number;
 }
 
 export interface EditorActions {
@@ -152,6 +203,8 @@ export interface EditorActions {
   setCurrentProjectId: (id: string | null) => void;
   /** Set the project name. */
   setProjectName: (name: string) => void;
+  /** Publish the clipboard's layer count so the menus can gate the paste rows. */
+  setClipboardLayerCount: (count: number) => void;
 }
 
 export type EditorContextValue = EditorState & EditorActions;
@@ -213,6 +266,7 @@ export function EditorProvider({ children, initial }: EditorProviderProps) {
   const [projectName, setProjectName] = useState(
     readStorage<string>("projectName", "Untitled"),
   );
+  const [clipboardLayerCount, setClipboardLayerCount] = useState(0);
 
   // ── Persist to localStorage whenever these values change ──────────────────
   useEffect(() => { writeStorage("layers", layers); }, [layers]);
@@ -354,6 +408,8 @@ export function EditorProvider({ children, initial }: EditorProviderProps) {
     setCurrentProjectId,
     projectName,
     setProjectName,
+    clipboardLayerCount,
+    setClipboardLayerCount,
   };
 
   return (

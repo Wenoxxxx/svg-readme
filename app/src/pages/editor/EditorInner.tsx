@@ -1,9 +1,12 @@
-import { useEffect, useCallback, useRef, useState } from "react";
+import { useEffect, useCallback, useMemo, useRef, useState } from "react";
 import { clampZoom } from "../../lib/editor/geometry";
 import { startPan, updatePan } from "../../lib/editor-tools/PanZoomHandler";
 import ViewportControls from "../../components/editor-canvas/ViewportControls";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
-import { useLayerOperations } from "./hooks/useLayerOperations";
+import {
+  useLayerOperations,
+  type LayerClipboardPort,
+} from "./hooks/useLayerOperations";
 import { useSvgImport } from "./hooks/useSvgImport";
 import EditorLayout from "../../layouts/EditorLayout";
 import { useEditor } from "../../context/EditorContext";
@@ -58,6 +61,7 @@ export function EditorInner() {
     isDirty,
     setCurrentProjectId,
     setProjectName,
+    setClipboardLayerCount,
   } = useEditor();
 
   const [customWidth, setCustomWidth] = useState("800");
@@ -69,6 +73,7 @@ export function EditorInner() {
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [workspacePanning, setWorkspacePanning] = useState(false);
+  const [isSpaceHeld, setIsSpaceHeld] = useState(false);
   const workspacePanStateRef = useRef<{
     startX: number; startY: number; initialPanX: number; initialPanY: number;
   } | null>(null);
@@ -76,6 +81,40 @@ export function EditorInner() {
   // ── Refs ─────────────────────────────────────────────────────────────────
   const isEditingRef = useRef(false);
   useEffect(() => { isEditingRef.current = isEditingText; }, [isEditingText]);
+
+  // ── Figma-style hold-Space for hand tool (workspace) ─────────────────────
+  useEffect(() => {
+    const isInputFocused = () => {
+      const target = document.activeElement;
+      if (!target) return false;
+      if (target instanceof HTMLElement) {
+        const tag = target.tagName.toLowerCase();
+        if (tag === "input" || tag === "textarea" || tag === "select") return true;
+        if (target.isContentEditable) return true;
+      }
+      return false;
+    };
+    const down = (e: KeyboardEvent) => {
+      if (e.code !== "Space" || e.repeat) return;
+      if (isEditingText) return;
+      if (isInputFocused()) return;
+      e.preventDefault();
+      setIsSpaceHeld(true);
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.code !== "Space") return;
+      setIsSpaceHeld(false);
+    };
+    const onBlur = () => setIsSpaceHeld(false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, [isEditingText]);
 
   const imageInputRef = useRef<HTMLInputElement>(null);
 
@@ -89,8 +128,25 @@ export function EditorInner() {
   const { history, setHistory, saveToHistory, handleUndo, handleRedo } =
     useEditorHistory({ documentRef, setLayers, setElementProperties, setSelectedLayerIds, setSelectedLayerId, setFrameSize });
 
-  const { handleCopy, handlePaste } =
-    useEditorClipboard({ selectedLayerIds, layers, elementProperties, frameSize, saveToHistory, setLayers, setElementProperties, setSelectedLayerIds, setSelectedLayerId });
+  const {
+    handleCopy,
+    handlePasteHere,
+    handlePasteToReplace,
+    hasClipboard,
+    clipboardCount,
+    clipboardReadable,
+  } = useEditorClipboard({
+    selectedLayerIds,
+    layers,
+    elementProperties,
+    frameSize,
+    saveToHistory,
+    setLayers,
+    setElementProperties,
+    setSelectedLayerIds,
+    setSelectedLayerId,
+    onClipboardChange: setClipboardLayerCount,
+  });
 
   const { handleExport } =
     useEditorExport({ frameSize, elementProperties, layers });
@@ -188,9 +244,37 @@ export function EditorInner() {
     handleDeleteSelectedLayers();
   }, [handleCopy, handleDeleteSelectedLayers, selectedLayerIds]);
 
+  // ── Clipboard port ───────────────────────────────────────────────────────
+  // One set of clipboard functions, shared by the menu dispatch and the
+  // keyboard shortcuts, so Ctrl+C and the menu's Copy can never diverge.
+  const layerClipboard = useMemo<LayerClipboardPort>(
+    () => ({
+      hasClipboard,
+      clipboardCount,
+      clipboardReadable,
+      copy: () => { void handleCopy(); },
+      cut: handleCut,
+      pasteHere: handlePasteHere,
+      pasteToReplace: handlePasteToReplace,
+      // Reuse the existing export services instead of duplicating them.
+      copyAsPng: () => window.dispatchEvent(new CustomEvent("copy-png-image")),
+      copyAsSvg: () => window.dispatchEvent(new CustomEvent("copy-svg-code")),
+    }),
+    [
+      hasClipboard,
+      clipboardCount,
+      clipboardReadable,
+      handleCopy,
+      handleCut,
+      handlePasteHere,
+      handlePasteToReplace,
+    ],
+  );
+
   // ── Layer operations (extracted hook) ────────────────────────────────────
   const layerOps = useLayerOperations({
     documentRef, saveToHistory, setLayers, setElementProperties, setSelectedLayerIds, setSelectedLayerId,
+    clipboard: layerClipboard,
   });
 
   const handleLayerContextAction = useCallback(
@@ -216,9 +300,24 @@ export function EditorInner() {
       setElementProperties((prev) => {
         const current = prev[editingLayerId];
         if (!current) return prev;
-        const autoSize = current.type === "text"
-          ? computeAutoSize({ ...current, width: current.width === "auto" ? "auto" : (current.width as number) }, trimmed)
-          : {};
+        let autoSize: { width?: number; height?: number } = {};
+        if (current.type === "text") {
+          autoSize = computeAutoSize({ ...current, width: current.width === "auto" ? "auto" : (current.width as number) }, trimmed);
+          // For fixed-width (HEIGHT) boxes, typing long text without Enter should
+          // NOT auto-wrap — the box should expand to fit the longest line.
+          // This mirrors the editing overlay's no-wrap behavior (wrapWidth=0).
+          if ((current as TextElementProperties).textAutoResize === "HEIGHT" && typeof (current as TextElementProperties).width === "number") {
+            try {
+              const fixedW = (current as TextElementProperties).width as number;
+              const linesNoWrap = getTextLines(trimmed, current as never, 0);
+              const longest = Math.max(getTextBlockWidth(linesNoWrap), 20);
+              if (longest > fixedW) {
+                autoSize.width = longest;
+                autoSize.height = Math.max(getTextBlockHeight(linesNoWrap, current as TextElementProperties), (current as TextElementProperties).fontSize * 1.4);
+              }
+            } catch { /* fallback to autoSize as-is */ }
+          }
+        }
         return {
           ...prev,
           [editingLayerId]: {
@@ -238,7 +337,7 @@ export function EditorInner() {
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useKeyboardShortcuts({
-    isEditingRef, handleCommitText, handleCopy, handlePaste, handleUndo, handleRedo,
+    isEditingRef, handleCommitText, handleUndo, handleRedo,
     handleDuplicate: layerOps.handleDuplicate,
     handleReorderLayers: layerOps.handleReorderLayers,
     handleDeleteSelectedLayers,
@@ -252,7 +351,14 @@ export function EditorInner() {
     onMoveElement: handleMoveElement,
     handleSave,
     handleExport,
-    handleCut,
+    // The same handler map the context menu dispatches through, so a shortcut
+    // and its menu row can never run different code.
+    layerCommandHandlers: layerOps.layerCommandHandlers,
+    clipboard: {
+      hasClipboard,
+      clipboardCount,
+      clipboardReadable,
+    },
     onToggleShortcuts: () => setShowShortcuts((s) => !s),
     layers, elementProperties,
     selectedVertex,
@@ -666,20 +772,24 @@ export function EditorInner() {
     return () => observer.disconnect();
   }, [fitViewport, isProjectActive]);
 
-  // ── Workspace hand-tool panning ────────────────────────────────────────
+  // ── Workspace hand-tool panning (hand tool OR hold-Space like Figma) ───
   const handleWorkspaceMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      // Only intercept for hand tool; let other events propagate to Canvas.
-      if (activeTool !== "hand") return;
+      const isHandLike = activeTool === "hand" || isSpaceHeld;
+      const isMiddle = e.button === 1;
+      // Only intercept for hand/space or middle-click; let other events propagate to Canvas.
+      if (!isHandLike && !isMiddle) return;
       // Don't intercept if the event target is inside the SVG/Canvas.
       const svg = workspaceRef.current?.querySelector("svg");
       if (svg && e.target instanceof Node && svg.contains(e.target)) return;
+      // For space-hand, only left-click should pan (middle already handled); ignore right-click
+      if (e.button === 2) return;
       e.preventDefault();
       const pan = startPan(e, viewport);
       workspacePanStateRef.current = pan.panState;
       setWorkspacePanning(true);
     },
-    [activeTool, viewport],
+    [activeTool, isSpaceHeld, viewport],
   );
 
   const handleWorkspaceMouseMove = useCallback(
@@ -869,7 +979,7 @@ export function EditorInner() {
         className="relative w-full h-full flex items-start justify-start overflow-hidden"
         style={{
           cursor:
-            activeTool === "hand"
+            activeTool === "hand" || isSpaceHeld
               ? workspacePanning
                 ? "grabbing"
                 : "grab"
@@ -952,6 +1062,8 @@ export function EditorInner() {
           x={canvasContextMenu.x}
           y={canvasContextMenu.y}
           anchorLayerId={canvasContextMenu.anchorLayerId}
+          hasClipboard={hasClipboard || clipboardReadable}
+          clipboardCount={clipboardCount}
           onClose={() => setCanvasContextMenu(null)}
           onAction={handleLayerContextAction}
         />

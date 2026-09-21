@@ -48,8 +48,6 @@ function makeHandlers(
   return {
     isEditingRef: { current: false },
     handleCommitText: vi.fn(),
-    handleCopy: vi.fn(),
-    handlePaste: vi.fn(),
     handleUndo: vi.fn(),
     handleRedo: vi.fn(),
     handleDuplicate,
@@ -151,18 +149,75 @@ describe("useKeyboardShortcuts — layer command dispatch", () => {
     });
     const { unmount } = renderHook(() => useKeyboardShortcuts(handlers));
 
+    // Reference bindings: the modifiers move the layer one step, the bare key
+    // jumps it all the way — Ctrl+] / ] , Ctrl+[ / [.
     press("]");
     expect(handlers.handleReorderLayers).toHaveBeenCalledWith("forward");
 
-    press("]", { shiftKey: true });
+    press("]", { ctrlKey: false });
     expect(handlers.handleReorderLayers).toHaveBeenCalledWith("front");
 
     press("[");
     expect(handlers.handleReorderLayers).toHaveBeenCalledWith("backward");
 
-    press("[", { shiftKey: true });
+    press("[", { ctrlKey: false });
     expect(handlers.handleReorderLayers).toHaveBeenCalledWith("back");
 
+    unmount();
+  });
+
+  it("binds the reference transform and structure shortcuts", () => {
+    const calls: string[] = [];
+    const handlers = makeHandlers({
+      layers: [layer("a"), layer("b")],
+      selectedLayerIds: ["a", "b"],
+      elementProperties: { a: shapeProps, b: shapeProps },
+      layerCommandHandlers: {
+        addAutoLayout: () => calls.push("addAutoLayout"),
+        flipHorizontal: () => calls.push("flipHorizontal"),
+        flipVertical: () => calls.push("flipVertical"),
+        createComponent: () => calls.push("createComponent"),
+        toggleVisibility: () => calls.push("toggleVisibility"),
+        toggleLock: () => calls.push("toggleLock"),
+        group: () => calls.push("group"),
+      },
+    });
+    const { unmount } = renderHook(() => useKeyboardShortcuts(handlers));
+
+    // Shift+A
+    press("A", { ctrlKey: false, shiftKey: true });
+    // Shift+H / Shift+V — must not be swallowed by the hand / move tools.
+    press("H", { ctrlKey: false, shiftKey: true });
+    press("V", { ctrlKey: false, shiftKey: true });
+    // Ctrl+Alt+K
+    press("k", { altKey: true });
+    // Ctrl+Shift+H / Ctrl+Shift+L
+    press("h", { shiftKey: true });
+    press("l", { shiftKey: true });
+
+    expect(calls).toEqual([
+      "addAutoLayout",
+      "flipHorizontal",
+      "flipVertical",
+      "createComponent",
+      "toggleVisibility",
+      "toggleLock",
+    ]);
+    // Shift+H flips; it must not also switch to the hand tool.
+    expect(handlers.setActiveTool).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("keeps Shift+H/V distinct from the hand and move tools", () => {
+    const handlers = makeHandlers({ layers: [], selectedLayerIds: [] });
+    const { unmount } = renderHook(() => useKeyboardShortcuts(handlers));
+
+    // Plain keys still select the tools.
+    press("h", { ctrlKey: false });
+    expect(handlers.setActiveTool).toHaveBeenCalledWith("hand");
+
+    press("v", { ctrlKey: false });
+    expect(handlers.setActiveTool).toHaveBeenCalledWith("move");
     unmount();
   });
 });

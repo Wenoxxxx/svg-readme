@@ -17,6 +17,11 @@ import {
   outlineText,
   outlineStroke,
   smartDelete,
+  addAutoLayout,
+  createComponent,
+  linkInstancesToMasters,
+  flipLayers,
+  type FlipAxis,
 } from "../../../lib/editor/layerOps";
 import { computeSelectionCapabilities } from "../../../lib/editor/selectionCapabilities";
 import {
@@ -25,6 +30,41 @@ import {
   type LayerCommandHandlers,
   type LayerCommandId,
 } from "../../../lib/editor/commands/layerCommands";
+
+/**
+ * The clipboard commands the menu exposes.
+ *
+ * Injected rather than reimplemented: the copy/paste machinery already lives
+ * with the clipboard hook (internal + OS clipboard, PNG/SVG export), and the
+ * registry dispatch must call exactly the same functions the keyboard
+ * shortcuts do. `hasClipboard`/`clipboardCount` mirror the clipboard's state so
+ * the capability layer can gate Paste here and Paste to replace.
+ */
+export interface LayerClipboardPort {
+  hasClipboard: boolean;
+  clipboardCount: number;
+  /** Whether the OS clipboard is readable — keeps Paste here enabled. */
+  clipboardReadable: boolean;
+  copy: () => void;
+  cut: () => void;
+  pasteHere: () => void;
+  pasteToReplace: () => void;
+  copyAsPng: () => void;
+  copyAsSvg: () => void;
+}
+
+/** Clipboard commands that are not wired yet fall back to a no-op. */
+const NOOP_CLIPBOARD: LayerClipboardPort = {
+  hasClipboard: false,
+  clipboardCount: 0,
+  clipboardReadable: false,
+  copy: () => {},
+  cut: () => {},
+  pasteHere: () => {},
+  pasteToReplace: () => {},
+  copyAsPng: () => {},
+  copyAsSvg: () => {},
+};
 
 export interface LayerOperationsParams {
   documentRef: MutableRefObject<{
@@ -38,6 +78,8 @@ export interface LayerOperationsParams {
   setElementProperties: React.Dispatch<React.SetStateAction<Record<string, ElementProperties>>>;
   setSelectedLayerIds: React.Dispatch<React.SetStateAction<string[]>>;
   setSelectedLayerId: (id: string | null) => void;
+  /** Copy/cut/paste + copy-as bindings shared with the keyboard shortcuts. */
+  clipboard?: LayerClipboardPort;
 }
 
 export function useLayerOperations(params: LayerOperationsParams) {
@@ -48,6 +90,7 @@ export function useLayerOperations(params: LayerOperationsParams) {
     setElementProperties,
     setSelectedLayerIds,
     setSelectedLayerId,
+    clipboard = NOOP_CLIPBOARD,
   } = params;
 
   // ── Duplicate ──────────────────────────────────────────────────────────
@@ -60,7 +103,13 @@ export function useLayerOperations(params: LayerOperationsParams) {
       currentSelection,
     );
     if (!result) return;
-    const { duplicatedLayers, duplicatedProperties, duplicatedTopIds } = result;
+    const { duplicatedProperties, duplicatedTopIds } = result;
+    // Duplicating a component master yields an *instance* that stays linked to
+    // it, rather than a second independent master.
+    const duplicatedLayers = linkInstancesToMasters(
+      result.duplicatedLayers,
+      currentLayers,
+    );
 
     saveToHistory();
     setLayers((previous) => [
@@ -254,46 +303,84 @@ export function useLayerOperations(params: LayerOperationsParams) {
   );
 
   // ── Toggle visibility ─────────────────────────────────────────────────
+  // Acts on the whole selection (the menu can be opened over a multi-selection)
+  // and follows the reference's single combined row: if anything in the
+  // selection is hidden, the command reveals it all; otherwise it hides it all.
   const handleToggleLayerVisibility = useCallback(() => {
-    const sel = documentRef.current.selectedLayerIds;
-    const firstId = sel[0];
-    if (!firstId) return;
-    const layer = documentRef.current.layers.find((l) => l.id === firstId);
-    if (!layer) return;
+    const selection = documentRef.current.selectedLayerIds;
+    if (selection.length === 0) return;
+    const byId = new Map(documentRef.current.layers.map((l) => [l.id, l]));
+    const anyHidden = selection.some((id) => byId.get(id)?.visible === false);
+    const visible = anyHidden;
+
     saveToHistory();
-    const newVisible = !layer.visible;
     setLayers((prev) =>
-      prev.map((l) =>
-        l.id === firstId ? { ...l, visible: newVisible } : l,
-      ),
-    );
-    window.dispatchEvent(
-      new CustomEvent("layer-toggle-visibility", {
-        detail: { id: firstId, visible: newVisible },
-      }),
+      prev.map((l) => (selection.includes(l.id) ? { ...l, visible } : l)),
     );
   }, [documentRef, saveToHistory, setLayers]);
 
   // ── Toggle lock ───────────────────────────────────────────────────────
   const handleToggleLayerLock = useCallback(() => {
-    const sel = documentRef.current.selectedLayerIds;
-    const firstId = sel[0];
-    if (!firstId) return;
-    const layer = documentRef.current.layers.find((l) => l.id === firstId);
-    if (!layer) return;
+    const selection = documentRef.current.selectedLayerIds;
+    if (selection.length === 0) return;
+    const byId = new Map(documentRef.current.layers.map((l) => [l.id, l]));
+    const anyUnlocked = selection.some((id) => byId.get(id)?.locked === false);
+    const locked = anyUnlocked;
+
     saveToHistory();
-    const newLocked = !layer.locked;
     setLayers((prev) =>
-      prev.map((l) =>
-        l.id === firstId ? { ...l, locked: newLocked } : l,
-      ),
-    );
-    window.dispatchEvent(
-      new CustomEvent("layer-toggle-lock", {
-        detail: { id: firstId, locked: newLocked },
-      }),
+      prev.map((l) => (selection.includes(l.id) ? { ...l, locked } : l)),
     );
   }, [documentRef, saveToHistory, setLayers]);
+
+  // ── Add auto layout ───────────────────────────────────────────────────
+  // Wraps the selection in a container that owns its children's positions, and
+  // writes the first pass of those positions immediately so the canvas updates
+  // without a second render pass.
+  const handleAddAutoLayout = useCallback(() => {
+    const { layers: currentLayers, elementProperties: currentProperties, selectedLayerIds: currentSelection } = documentRef.current;
+    if (currentSelection.length === 0) return;
+
+    const result = addAutoLayout(currentLayers, currentProperties, currentSelection);
+    if (!result) return;
+
+    saveToHistory();
+    setLayers(result.updatedLayers);
+    setElementProperties(result.updatedProperties);
+    setSelectedLayerIds([result.containerId]);
+    setSelectedLayerId(result.containerId);
+  }, [documentRef, saveToHistory, setLayers, setElementProperties, setSelectedLayerIds, setSelectedLayerId]);
+
+  // ── Create component ──────────────────────────────────────────────────
+  const handleCreateComponent = useCallback(() => {
+    const { layers: currentLayers, selectedLayerIds: currentSelection } = documentRef.current;
+    if (currentSelection.length === 0) return;
+
+    const result = createComponent(currentLayers, currentSelection);
+    if (!result) return;
+
+    saveToHistory();
+    setLayers(result.updatedLayers);
+    setSelectedLayerIds([result.masterId]);
+    setSelectedLayerId(result.masterId);
+  }, [documentRef, saveToHistory, setLayers, setSelectedLayerIds, setSelectedLayerId]);
+
+  // ── Flip ──────────────────────────────────────────────────────────────
+  // Toggles the flipH/flipV flags the renderer and exporter already honour, so
+  // the result matches the right bar's flip buttons exactly.
+  const handleFlip = useCallback(
+    (axis: FlipAxis) => {
+      const { elementProperties: currentProperties, selectedLayerIds: currentSelection } = documentRef.current;
+      if (currentSelection.length === 0) return;
+
+      const result = flipLayers(currentProperties, currentSelection, axis);
+      if (!result) return;
+
+      saveToHistory();
+      setElementProperties((prev) => ({ ...prev, ...result.updatedProperties }));
+    },
+    [documentRef, saveToHistory, setElementProperties],
+  );
 
   // ── Layer context menu action handler ─────────────────────────────────
   // The action map is memoized (not a ref written during render) so the
@@ -301,34 +388,54 @@ export function useLayerOperations(params: LayerOperationsParams) {
   // ref mutation. All handlers are stable useCallbacks, so this is cheap.
   const layerActionMap = useMemo<LayerCommandHandlers>(
     () => ({
+      // Clipboard — the same functions the keyboard shortcuts call.
+      copy: clipboard.copy,
+      cut: clipboard.cut,
+      pasteHere: clipboard.pasteHere,
+      pasteToReplace: clipboard.pasteToReplace,
+      copyAsPng: clipboard.copyAsPng,
+      copyAsSvg: clipboard.copyAsSvg,
+      // Edit
       duplicate: handleDuplicate,
       bringToFront: () => handleReorderLayers("front"),
       bringForward: () => handleReorderLayers("forward"),
       sendBackward: () => handleReorderLayers("backward"),
       sendToBack: () => handleReorderLayers("back"),
+      // Structure
       group: handleGroup,
       ungroup: handleUngroup,
       wrapInFrame: handleWrapInFrame,
-      toggleVisibility: handleToggleLayerVisibility,
-      toggleLock: handleToggleLayerLock,
+      addAutoLayout: handleAddAutoLayout,
+      toggleMask: handleToggleMask,
       flatten: handleFlatten,
       outlineText: handleOutlineText,
       outlineStroke: handleOutlineStroke,
-      toggleMask: handleToggleMask,
+      // Component
+      createComponent: handleCreateComponent,
+      // State
+      toggleVisibility: handleToggleLayerVisibility,
+      toggleLock: handleToggleLayerLock,
+      // Transform
+      flipHorizontal: () => handleFlip("horizontal"),
+      flipVertical: () => handleFlip("vertical"),
+      // Not part of the reference menu, still dispatchable.
       booleanUnion: () => handleBooleanOp("union"),
       booleanSubtract: () => handleBooleanOp("subtract"),
       booleanIntersect: () => handleBooleanOp("intersect"),
       booleanExclude: () => handleBooleanOp("exclude"),
-      copyAsPng: () => window.dispatchEvent(new CustomEvent("copy-png-image")),
     }),
     [
+      clipboard,
       handleDuplicate,
       handleReorderLayers,
       handleGroup,
       handleUngroup,
       handleWrapInFrame,
+      handleAddAutoLayout,
       handleToggleLayerVisibility,
       handleToggleLayerLock,
+      handleCreateComponent,
+      handleFlip,
       handleFlatten,
       handleOutlineText,
       handleOutlineStroke,
@@ -347,6 +454,9 @@ export function useLayerOperations(params: LayerOperationsParams) {
         layers,
         selectedLayerIds,
         elementProperties,
+        hasClipboard: clipboard.hasClipboard,
+        clipboardCount: clipboard.clipboardCount,
+        clipboardReadable: clipboard.clipboardReadable,
       });
       const commands = buildLayerCommands({
         capabilities,
@@ -354,7 +464,7 @@ export function useLayerOperations(params: LayerOperationsParams) {
       });
       runLayerCommand(commands, actionId as LayerCommandId);
     },
-    [documentRef, layerActionMap],
+    [documentRef, layerActionMap, clipboard],
   );
 
   return {
@@ -366,6 +476,9 @@ export function useLayerOperations(params: LayerOperationsParams) {
     handleWrapInFrame,
     handleToggleMask,
     handleBooleanOp,
+    handleAddAutoLayout,
+    handleCreateComponent,
+    handleFlip,
     handleOutlineText,
     handleOutlineStroke,
     handleSmartDelete,
