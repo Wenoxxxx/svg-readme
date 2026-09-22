@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import {
   MIN_TEXTBOX_SIZE,
@@ -125,6 +125,7 @@ export function useCanvasInteraction({
   onCreatePath,
 }: UseCanvasInteractionParams) {
   const spacePressedRef = useRef(false);
+  const [isSpaceHeld, setIsSpaceHeld] = useState(false);
   const moveHistorySavedRef = useRef(false);
   const lastPenClickRef = useRef<{ t: number; x: number; y: number } | null>(null);
   const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
@@ -144,21 +145,46 @@ export function useCanvasInteraction({
     if (onCreatePath) onCreatePathRef.current = onCreatePath;
   }, [onCreatePath]);
 
-  // ── Spacebar detection ────────────────────────────────────────────────
+  // ── Spacebar detection (Figma-style hold-to-hand) ───────────────────────
   useEffect(() => {
+    const isInputFocused = () => {
+      const target = document.activeElement;
+      if (!target) return false;
+      if (target instanceof HTMLElement) {
+        const tag = target.tagName.toLowerCase();
+        if (tag === "input" || tag === "textarea" || tag === "select") return true;
+        if (target.isContentEditable) return true;
+      }
+      return false;
+    };
     const down = (e: KeyboardEvent) => {
-      if (e.code === "Space" && !e.repeat) spacePressedRef.current = true;
+      if (e.code !== "Space" || e.repeat) return;
+      // Don't hijack space while editing text or typing in an input
+      if (isEditingText) return;
+      if (isInputFocused()) return;
+      // Prevent page scroll and button activation while holding space for hand tool
+      e.preventDefault();
+      spacePressedRef.current = true;
+      setIsSpaceHeld(true);
     };
     const up = (e: KeyboardEvent) => {
-      if (e.code === "Space") spacePressedRef.current = false;
+      if (e.code !== "Space") return;
+      spacePressedRef.current = false;
+      setIsSpaceHeld(false);
+    };
+    const onBlur = () => {
+      spacePressedRef.current = false;
+      setIsSpaceHeld(false);
     };
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
+    window.addEventListener("blur", onBlur);
     return () => {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", onBlur);
     };
-  }, []);
+  }, [isEditingText]);
 
   // ── Pen tool: Enter/Escape to finalize/cancel path ──────────────────────
   useEffect(() => {
@@ -300,6 +326,11 @@ export function useCanvasInteraction({
     (e: React.MouseEvent, _state: ToolInteractionState) => {
       e.preventDefault();
 
+      // Right-click is owned by the context-menu hook (onCanvasContextMenu /
+      // onElementContextMenu): never start a marquee, pan or drag from it, and
+      // never let it clear the selection.
+      if (e.button === 2) return;
+
       if (e.button === 1 || spacePressedRef.current) {
         setState((prev) => ({ ...prev, ...startPan(e, viewport) }));
         return;
@@ -351,8 +382,22 @@ export function useCanvasInteraction({
   // ── Element mouse down ───────────────────────────────────────────────────
   const handleElementMouseDown = useCallback(
     (e: React.MouseEvent, layerId: string, _state: ToolInteractionState) => {
+      // Right-click opens the selection context menu instead of starting a drag.
+      // Selection-on-right-click is handled there so a multi-selection survives.
+      if (e.button === 2) return;
+      // Figma-style: hold Space to pan even when clicking an element
+      if (e.button === 1 || spacePressedRef.current) {
+        e.stopPropagation();
+        setState((prev) => ({ ...prev, ...startPan(e, viewport) }));
+        return;
+      }
       e.stopPropagation();
-      if (isEditingText) onCommitText?.();
+      // Guard: missing props should not crash — stale id from a bad document
+      const targetProps = elementProperties[layerId];
+      if (!targetProps) return;
+      if (isEditingText) {
+        onCommitText?.();
+      }
 
       if (activeTool === "move") {
         if (e.altKey) {
@@ -394,6 +439,7 @@ export function useCanvasInteraction({
       isEditingText,
       layers,
       elementProperties,
+      viewport,
       onSelectLayer,
       onShiftSelectLayer,
       onEditText,
@@ -407,11 +453,27 @@ export function useCanvasInteraction({
 
   // ── Element double click ─────────────────────────────────────────────────
   const handleElementDoubleClick = useCallback(
-    (_e: React.MouseEvent, layerId: string) => {
+    (e: React.MouseEvent, layerId: string) => {
+      // Prevent the SVG's own onDoubleClick (pen-tool close) from firing
+      e.stopPropagation();
+      // If already editing, commit first then re-enter — avoids stale dragState
+      if (isEditingText) onCommitText?.();
       if (activeTool !== "move") return;
       const props = elementProperties[layerId];
-      if (props && props.type === "text") {
-        onEditText(layerId);
+      // Defensive: props may be missing after a bad import/undo — fall back to layer lookup
+      const isTextLike =
+        (props && props.type === "text") ||
+        layers.find((l) => l.id === layerId)?.type === "text";
+      if (isTextLike) {
+        // Clear any drag/rubberBand left by the second mousedown of the double-click
+        setState((prev) => ({ ...prev, dragState: null, rubberBandState: null, rubberBandHighlightedIds: [] }));
+        // Only enter edit if props actually exists — otherwise EditorInner guard will no-op
+        if (props && props.type === "text") {
+          onEditText(layerId);
+        } else {
+          // Props missing: still try — EditorInner will guard and not crash
+          onEditText(layerId);
+        }
         return;
       }
       const layer = layers.find((l) => l.id === layerId);
@@ -420,7 +482,7 @@ export function useCanvasInteraction({
         layer.type === "group" ? layer.id : (layer.parentId ?? null);
       if (targetId) onSelectLayer(targetId);
     },
-    [activeTool, layers, elementProperties, onEditText, onSelectLayer],
+    [activeTool, layers, elementProperties, onEditText, onSelectLayer, isEditingText, onCommitText, setState],
   );
 
   // ── Mouse move ───────────────────────────────────────────────────────────
@@ -778,6 +840,7 @@ export function useCanvasInteraction({
     selectedProps,
     visibleLayerIds,
     spacePressedRef,
+    isSpaceHeld,
     moveHistorySavedRef,
     lastPointerRef,
     pathBuildingRef,

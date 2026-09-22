@@ -151,6 +151,17 @@
   border-radius: 0 !important;
 }
 
+/* ─── Text editing overlay — hide scrollbars ─────────────── */
+.text-edit-textarea::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+.text-edit-textarea {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
 /* ─── Responsive ─────────────────────────────────────────── */
 @media (max-width: 768px) {
   .editor-workspace {

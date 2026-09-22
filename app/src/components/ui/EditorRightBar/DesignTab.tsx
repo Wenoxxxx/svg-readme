@@ -2,7 +2,6 @@ import {
   FlipHorizontal,
   FlipVertical,
   ArrowsOutCardinal,
-  Eye,
   FolderOpen,
   TextT as TypeIcon,
   Square as SquareIcon,
@@ -12,6 +11,7 @@ import {
 import type { ElementProperties } from "../../editor-canvas/ElementsRenderer";
 import { useEditor } from "../../../context/EditorContext";
 import { PropInput } from "./helpers";
+import CanvasSettingsPanel from "./CanvasSettingsPanel";
 import AlignmentControls from "./AlignmentControls";
 import MultiEditControls from "./MultiEditControls";
 import GroupBoundsPanel from "./GroupBoundsPanel";
@@ -26,6 +26,8 @@ interface DesignTabProps {
   onUpdateProperties?: (id: string, updates: Partial<ElementProperties>) => void;
   onBulkUpdateProperties?: (updates: Partial<ElementProperties>) => void;
   onPropertiesStart?: () => void;
+  /** Fired before a canvas (frame) resize so the change lands in undo history. */
+  onCanvasResizeStart?: () => void;
   onMoveElement?: (id: string, x: number, y: number) => void;
   onAlignmentStart?: () => void;
   multiSelectCount: number;
@@ -41,6 +43,7 @@ function DesignTab({
   onUpdateProperties,
   onBulkUpdateProperties,
   onPropertiesStart,
+  onCanvasResizeStart,
   onMoveElement,
   onAlignmentStart,
   multiSelectCount,
@@ -126,21 +129,8 @@ function DesignTab({
       );
     }
 
-    return (
-      <div className="p-8 flex flex-col items-center justify-center text-center gap-3">
-        <div className="w-10 h-10 rounded-full bg-zinc-800 border border-white/5 flex items-center justify-center">
-          <Eye className="w-4 h-4 text-zinc-400" />
-        </div>
-        <div>
-          <h3 className="text-sm font-medium text-zinc-300 mb-1">
-            No Selection
-          </h3>
-          <p className="text-xs text-zinc-500">
-            Select a layer on the canvas to edit its properties.
-          </p>
-        </div>
-      </div>
-    );
+    // Nothing (or no editable layer) selected → Canvas settings home.
+    return <CanvasSettingsPanel onCanvasResizeStart={onCanvasResizeStart} />;
   }
 
   const update = (updates: Partial<ElementProperties>) =>

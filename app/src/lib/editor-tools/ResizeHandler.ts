@@ -1,20 +1,51 @@
-import { MIN_SHAPE_SIZE } from "../../components/editor-canvas/types";
+import { MIN_SHAPE_SIZE, MIN_TEXTBOX_SIZE } from "../../components/editor-canvas/types";
 import type { ElementProperties } from "../../components/editor-canvas/ElementsRenderer";
 import type { ResizeState } from "../../components/editor-canvas/types";
 import type { ToolEventContext, ToolInteractionState } from "./types";
+import { getTextAutoBox } from "../../lib/editor/textMeasure";
 
 export type ResizeHandle = ResizeState["handle"];
 
 /**
  * Whether a given element supports resize interactions.
+ * Text is resizable too (Figma/open-pencil: textbox has 8 handles, behavior depends on textAutoResize).
  */
 export function canResize(props: ElementProperties | null): boolean {
   if (!props) return false;
-  return props.type === "shape" || props.type === "image" || props.type === "path";
+  return props.type === "shape" || props.type === "image" || props.type === "path" || props.type === "text";
+}
+
+/**
+ * Whether a resize handle should apply to a text element given its auto-resize mode.
+ * - WIDTH_AND_HEIGHT (auto-w/h): only horizontal handles convert to fixed; vertical handles are clamped to content.
+ * - HEIGHT (auto-h, fixed-w): horizontal handles resize width, vertical handles are ignored (height auto).
+ * - NONE (fixed): all handles active.
+ */
+export function isTextHandleEnabled(
+  props: ElementProperties | null,
+  handle: ResizeHandle,
+): boolean {
+  if (!props || props.type !== "text") return true;
+  const mode = props.textAutoResize ?? "WIDTH_AND_HEIGHT";
+  if (mode === "NONE") return true;
+  if (mode === "HEIGHT") {
+    // In auto-height mode the box height hugs content — vertical drags should not change height.
+    // Horizontal + corner handles are needed to change wrap width; tc/bc are disabled.
+    if (handle === "tc" || handle === "bc") return false;
+    return true;
+  }
+  // WIDTH_AND_HEIGHT: side drags will convert to HEIGHT; tc/bc disabled until converted.
+  if (mode === "WIDTH_AND_HEIGHT") {
+    if (handle === "tc" || handle === "bc") return false;
+    return true;
+  }
+  return true;
 }
 
 /**
  * Start a resize interaction.
+ * For text in WIDTH_AND_HEIGHT (auto-w) mode, the bounding box width is measured from content
+ * (getTextBlockWidth) so the first drag does not jump from 0→fixed. Other text modes use stored width.
  */
 export function startResize(
   ctx: ToolEventContext,
@@ -23,6 +54,25 @@ export function startResize(
 ): Partial<ToolInteractionState> {
   const props = ctx.selectedProps;
   if (!props || !canResize(props)) return {};
+  if (props.type === "text" && !isTextHandleEnabled(props, handle)) return {};
+
+  // For text, compute the visual initial width/height (what the user sees) so drift is zero.
+  let initialWidth = typeof props.width === "number" ? props.width : 0;
+  let initialHeight = typeof props.height === "number" ? props.height : 0;
+  if (props.type === "text") {
+    try {
+      const box = getTextAutoBox(props as never, props.content);
+      if (props.width === "auto" || initialWidth === 0) initialWidth = box.width;
+      if ((props.textAutoResize ?? "WIDTH_AND_HEIGHT") !== "NONE") {
+        initialHeight = box.height;
+      }
+    } catch {
+      // fallback: keep stored values
+    }
+    // Enforce textbox minimums (larger than shape minimums)
+    initialWidth = Math.max(initialWidth, MIN_TEXTBOX_SIZE);
+    initialHeight = Math.max(initialHeight, MIN_TEXTBOX_SIZE);
+  }
 
   return {
     resizeState: {
@@ -32,8 +82,10 @@ export function startResize(
       startY: ctx.worldPoint.y,
       initialX: props.x,
       initialY: props.y,
-      initialWidth: typeof props.width === "number" ? props.width : 0,
-      initialHeight: typeof props.height === "number" ? props.height : 0,
+      initialWidth,
+      initialHeight,
+      isText: props.type === "text",
+      textAutoResize: props.type === "text" ? (props.textAutoResize ?? "WIDTH_AND_HEIGHT") : undefined,
     },
   };
 }
@@ -61,8 +113,9 @@ export function updateResize(
     initialHeight,
   } = state;
 
-  const minW = MIN_SHAPE_SIZE;
-  const minH = MIN_SHAPE_SIZE;
+  const isText = state.isText === true;
+  const minW = isText ? MIN_TEXTBOX_SIZE : MIN_SHAPE_SIZE;
+  const minH = isText ? MIN_TEXTBOX_SIZE : MIN_SHAPE_SIZE;
   const aspectRatio = initialWidth / initialHeight;
 
   let newX = initialX;
@@ -138,6 +191,19 @@ export function updateResize(
     // Enforce minimums
     newWidth = Math.max(newWidth, minW);
     newHeight = Math.max(newHeight, minH);
+  }
+
+  // For auto-height text (HEIGHT / WIDTH_AND_HEIGHT) the height always hugs content.
+  // Ignore any dy-driven height delta — the visual height is recomputed in the commit handler.
+  // Width-driven handles already set newWidth correctly; just clamp height back.
+  const textAutoMode = state.textAutoResize;
+  if (isText && textAutoMode && textAutoMode !== "NONE") {
+    newHeight = initialHeight;
+    // Reset Y drift introduced by top-corner tc/tl/tr calculations
+    if (handle === "tl" || handle === "tr" || handle === "tc") {
+      newY = initialY;
+    }
+    // Ensure alt-center logic still keeps Y centered (still handled below with corrected newHeight)
   }
 
   // Alt: resize from the center — keep the box's center fixed by re-centering

@@ -1,17 +1,21 @@
 import { useEffect, type RefObject } from "react";
-import type { EditorTool, LayerType, ShapeSubTool } from "../../context/EditorContext";
-import { clampZoom } from "../../lib/editor/geometry";
-import type { ElementProperties } from "../../components/editor-canvas/ElementsRenderer";
+import type { EditorTool, LayerType, ShapeSubTool } from "../../../context/EditorContext";
+import { clampZoom } from "../../../lib/editor/geometry";
+import { computeSelectionCapabilities } from "../../../lib/editor/selectionCapabilities";
+import {
+  buildLayerCommands,
+  runLayerCommand,
+  LAYER_SHORTCUT_BINDINGS,
+  type LayerCommandHandlers,
+} from "../../../lib/editor/commands/layerCommands";
+import { matchesShortcut } from "../../../lib/editor/commands/shortcuts";
+import type { ElementProperties } from "../../../components/editor-canvas/ElementsRenderer";
 
 const SHAPE_CYCLE: ShapeSubTool[] = ["rect", "circle", "triangle", "star", "hexagon", "line"];
 
 export interface KeyboardShortcutHandlers {
   isEditingRef: RefObject<boolean>;
   handleCommitText: () => void;
-  handleCopy: () => void;
-  handlePaste: () => void;
-  /** Ctrl+X: copy then delete the selection. */
-  handleCut?: () => void;
   handleUndo: () => void;
   handleRedo: () => void;
   handleDuplicate: () => void;
@@ -42,15 +46,24 @@ export interface KeyboardShortcutHandlers {
   onDeleteVertex?: (layerId: string, index: number) => void;
   layers: LayerType[];
   elementProperties: Record<string, ElementProperties>;
+  /**
+   * Every other layer command, keyed by id. The menu dispatch and the shortcuts
+   * must run the same functions, so the editor passes the same handler map it
+   * gives the context menu (`layerOps.layerCommandHandlers`).
+   */
+  layerCommandHandlers?: LayerCommandHandlers;
+  /** Clipboard state, so the paste shortcuts share the menu's enable rules. */
+  clipboard?: {
+    hasClipboard: boolean;
+    clipboardCount: number;
+    clipboardReadable: boolean;
+  };
 }
 
 export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
   const {
     isEditingRef,
     handleCommitText,
-    handleCopy,
-    handlePaste,
-    handleCut,
     handleUndo,
     handleRedo,
     handleDuplicate,
@@ -78,9 +91,37 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
     onDeleteVertex,
     layers,
     elementProperties,
+    layerCommandHandlers,
+    clipboard,
   } = handlers;
 
   useEffect(() => {
+    // ── Layer commands (capability-gated) ────────────────────────────────────
+    // The same registry the context menu uses backs the layer shortcuts, so a
+    // shortcut can never fire an action the selection does not allow.
+    const layerCommands = buildLayerCommands({
+      capabilities: computeSelectionCapabilities({
+        layers,
+        selectedLayerIds,
+        elementProperties,
+        hasClipboard: clipboard?.hasClipboard,
+        clipboardCount: clipboard?.clipboardCount,
+        clipboardReadable: clipboard?.clipboardReadable,
+      }),
+      handlers: {
+        duplicate: handleDuplicate,
+        bringToFront: () => handleReorderLayers("front"),
+        bringForward: () => handleReorderLayers("forward"),
+        sendBackward: () => handleReorderLayers("backward"),
+        sendToBack: () => handleReorderLayers("back"),
+        group: handleGroup,
+        ungroup: handleUngroup,
+        delete: handleDeleteSelectedLayers,
+        // The editor's own copy/cut/paste + transform commands.
+        ...layerCommandHandlers,
+      },
+    });
+
     // ── Nudge helper (defined inside effect to avoid stale-closure issues) ──
     const nudgeSelection = (dx: number, dy: number) => {
       const ids = selectedLayerIds.length > 0 ? selectedLayerIds : (selectedLayerId ? [selectedLayerId] : []);
@@ -131,23 +172,42 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
         return;
       }
 
+      // ── Destructive key handling that outranks the layers' Delete row ──────
+      // Alt+Delete keeps its smart-delete meaning, and a selected path vertex
+      // deletes the anchor rather than the layer, even though both are bound to
+      // the same physical key.
+      if (e.key === "Backspace" || e.key === "Delete") {
+        if (e.altKey) {
+          e.preventDefault();
+          handleSmartDelete(true);
+          return;
+        }
+        if (selectedVertex) {
+          e.preventDefault();
+          onDeleteVertex?.(selectedVertex.layerId, selectedVertex.index);
+          return;
+        }
+      }
+
+      // ── Registry-bound command shortcuts ───────────────────────────────────
+      // One table, derived from the command definitions, drives both the labels
+      // the menus show and the keys handled here. Matching demands an exact
+      // modifier set, so Shift+H (flip) never swallows Ctrl+Shift+H (hide).
+      const matchedBinding = LAYER_SHORTCUT_BINDINGS.find(({ binding }) =>
+        matchesShortcut(binding, e),
+      );
+      if (matchedBinding) {
+        e.preventDefault();
+        runLayerCommand(layerCommands, matchedBinding.command);
+        return;
+      }
+
       switch (e.key) {
         case "v":
         case "V":
-          if (isCtrlPressed) {
-            e.preventDefault();
-            handlePaste();
-          } else {
-            e.preventDefault();
-            setActiveTool("move");
-          }
-          break;
-        case "c":
-        case "C":
-          if (isCtrlPressed) {
-            e.preventDefault();
-            handleCopy();
-          }
+          // Ctrl/Cmd+V and Shift+V are handled by the binding table above.
+          e.preventDefault();
+          setActiveTool("move");
           break;
         case "t":
         case "T":
@@ -234,13 +294,7 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
             handleSave?.();
           }
           break;
-        case "d":
-        case "D":
-          if (isCtrlPressed) {
-            e.preventDefault();
-            handleDuplicate();
-          }
-          break;
+        // Ctrl+D (Duplicate) is dispatched from the binding table.
         case "e":
         case "E":
           if (isCtrlPressed) {
@@ -248,13 +302,7 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
             handleExport?.();
           }
           break;
-        case "x":
-        case "X":
-          if (isCtrlPressed) {
-            e.preventDefault();
-            handleCut?.();
-          }
-          break;
+        // Ctrl+X (Cut) and Ctrl+C (Copy) are dispatched from the binding table.
         case "/":
           if (isCtrlPressed) {
             e.preventDefault();
@@ -266,18 +314,7 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
           e.preventDefault();
           onToggleShortcuts?.();
           break;
-        case "]":
-          if (isCtrlPressed) {
-            e.preventDefault();
-            handleReorderLayers(e.shiftKey ? "front" : "forward");
-          }
-          break;
-        case "[":
-          if (isCtrlPressed) {
-            e.preventDefault();
-            handleReorderLayers(e.shiftKey ? "back" : "backward");
-          }
-          break;
+        // Ordering (Ctrl+] / ] / Ctrl+[ / [) comes from the binding table.
         case "0":
           e.preventDefault();
           setViewport({ zoom: 1, panX: 0, panY: 0 });
@@ -293,16 +330,9 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
           break;
         case "g":
         case "G":
+          // Ctrl+G / Ctrl+Shift+G / Ctrl+Alt+G come from the binding table.
           e.preventDefault();
-          if (isCtrlPressed) {
-            if (e.shiftKey) {
-              handleUngroup();
-            } else {
-              handleGroup();
-            }
-          } else {
-            setGridEnabled((enabled) => !enabled);
-          }
+          setGridEnabled((enabled) => !enabled);
           break;
         case "F2":
           // F2: start renaming the first selected layer
@@ -330,19 +360,9 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
             setActiveTool("move");
           }
           break;
-        case "Backspace":
-        case "Delete":
-          e.preventDefault();
-          if (e.altKey) {
-            // Alt+Delete keeps its smart-delete meaning even with a node selected.
-            handleSmartDelete(true);
-          } else if (selectedVertex) {
-            // Node editing: delete the selected anchor, not the layer.
-            onDeleteVertex?.(selectedVertex.layerId, selectedVertex.index);
-          } else {
-            handleDeleteSelectedLayers();
-          }
-          break;
+        // Backspace/Delete: the plain case is dispatched from the binding table;
+        // Alt+Delete and vertex deletion are handled before it.
+
       }
     };
 
@@ -351,9 +371,8 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
   }, [
     isEditingRef,
     handleCommitText,
-    handleCopy,
-    handlePaste,
-    handleCut,
+    layerCommandHandlers,
+    clipboard,
     handleUndo,
     handleRedo,
     handleDuplicate,

@@ -18,6 +18,7 @@ import { useCanvasInteraction } from "./useCanvasInteraction";
 import { getToolHandler } from "../../lib/editor-tools/registry";
 import { getRotateCursor } from "../../lib/editor-tools/RotateHandler";
 import { getResizeCursor } from "../../lib/editor-tools/ResizeHandler";
+import { getTextAutoBox } from "../../lib/editor/textMeasure";
 import type { CanvasOverlayProps } from "./CanvasOverlay";
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -39,6 +40,8 @@ export default function Canvas({
   onSelectLayer,
   onShiftSelectLayer,
   onClearSelection,
+  onElementContextMenu,
+  onCanvasContextMenu,
   onRubberBandSelect,
   onMoveStart,
   onMoveElement,
@@ -110,6 +113,7 @@ export default function Canvas({
     buildContext,
     selectedId,
     selectedProps,
+    isSpaceHeld,
   } = useCanvasInteraction({
     activeTool,
     selectedShapeKind,
@@ -183,16 +187,41 @@ export default function Canvas({
 
   // ── Overlay visibility ───────────────────────────────────────────────────
   const tool = getToolHandler(activeTool, selectedShapeKind);
+  const canShowForSingle =
+    !!selectedId &&
+    !!selectedProps &&
+    (selectedProps.type === "shape" ||
+      selectedProps.type === "image" ||
+      selectedProps.type === "path" ||
+      selectedProps.type === "text");
+  // Hide resize/rotate handles while editing text — they should only appear
+  // after the user commits (blur / Enter outside) — see TextOverlay comments.
   const showResizeOverlay =
-    (tool.showResizeOverlay ?? false) &&
-    (!!selectedId && selectedProps && (selectedProps.type === "shape" || selectedProps.type === "image" || selectedProps.type === "path")
-      ? true
-      : multiBounds !== null);
+    !isEditingText && (tool.showResizeOverlay ?? false) && (canShowForSingle || multiBounds !== null);
 
   // ── Rotate transform for selected element overlay ────────────────────────
+  // For text, use the visual bounding box (measured via textMeasure) so the overlay hugs the rendered text,
+  // not the stored width="auto" (0) phantom.
+  const getVisualTextBox = (p: import("./ElementsRenderer").TextElementProperties) => {
+    try {
+      return getTextAutoBox(p as never, p.content);
+    } catch {
+      return { width: typeof p.width === "number" ? p.width : 100, height: p.height };
+    }
+  };
+  const visualSelectedProps: import("./ElementsRenderer").ElementProperties | null = (() => {
+    if (!showResizeOverlay || !selectedProps) return null;
+    if (selectedProps.type === "text") {
+      const box = getVisualTextBox(selectedProps as import("./ElementsRenderer").TextElementProperties);
+      return { ...selectedProps, width: box.width, height: box.height } as import("./ElementsRenderer").ElementProperties;
+    }
+    if (selectedProps.type === "shape" || selectedProps.type === "image" || selectedProps.type === "path") return selectedProps;
+    return null;
+  })();
+
   const overlayProps = (
-    showResizeOverlay && selectedProps && (selectedProps.type === "shape" || selectedProps.type === "image" || selectedProps.type === "path")
-      ? selectedProps
+    showResizeOverlay && visualSelectedProps
+      ? (visualSelectedProps as unknown as { type: string; kind: string; x: number; y: number; width: number; height: number; fill: string; stroke: string; strokeWidth: number; opacity: number; rotation?: number })
       : showResizeOverlay && multiBounds
         ? {
             type: "shape",
@@ -215,6 +244,7 @@ export default function Canvas({
   // ── Cursor ───────────────────────────────────────────────────────────────
   const getCursor = (): string => {
     if (state.panState) return "grabbing";
+    if (isSpaceHeld) return "grab";
     if (state.rotateState) return getRotateCursor(state);
     if (state.resizeState) return getResizeCursor(state);
     return tool.getCursor?.(state) ?? "default";
@@ -269,6 +299,7 @@ export default function Canvas({
         onMouseLeave={() => setHoveredLayerId(null)}
         onWheel={handleWheel}
         onDoubleClick={handleDoubleClick}
+        onContextMenu={onCanvasContextMenu}
       >
         <CanvasOverlay
           frameSize={frameSize}
@@ -304,6 +335,7 @@ export default function Canvas({
           onElementMouseDown={handleElementMouseDown}
           onElementDoubleClick={handleElementDoubleClick}
           onElementHover={setHoveredLayerId}
+          onElementContextMenu={onElementContextMenu}
           handleResizeMouseDown={handleResizeMouseDown}
           handleRotateMouseDown={handleRotateMouseDown}
           onEditingContentChange={onEditingContentChange}

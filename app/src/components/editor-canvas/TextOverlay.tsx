@@ -1,5 +1,11 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
-import { measureTextWidth } from "../../lib/editor/textMeasure";
+import { useEffect, useRef } from "react";
+import {
+  getTextLines,
+  getLineHeight,
+  getTextBlockHeight,
+  getTextBlockWidth,
+} from "../../lib/editor/textMeasure";
+import { getTextVerticalOffset } from "../../lib/editor/textAlign";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -65,34 +71,71 @@ export default function TextOverlay({
 }: TextOverlayProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Compute overlay width through the shared text measurement (A11) so the
-  // editing box matches the rendered/exported box. fontSize is already zoomed
-  // by the caller, so the measured width lands in screen pixels too.
-  const overlayWidth =
-    width === "auto"
-      ? Math.max(
-          content
-            .split("\n")
-            .reduce(
-              (max, line) =>
-                Math.max(
-                  max,
-                  measureTextWidth(line, {
-                    fontFamily,
-                    fontSize,
-                    fontWeight,
-                    italic,
-                    letterSpacing,
-                  }),
-                ),
-              0,
-            ),
-          20,
-        )
-      : width;
+  // ── Geometry that mirrors ElementsRenderer/TextElement exactly ─────────────
+  // Defensive: content/width/fontSize may be malformed after a bad import or
+  // stale localStorage — never let a measurement throw and crash the ErrorBoundary.
+  const safeContent = typeof content === "string" ? content : String(content ?? "");
+  const safeWidth: number | "auto" =
+    typeof width === "number" && Number.isFinite(width) ? width : width === "auto" ? "auto" : "auto";
+  const safeFontSize = typeof fontSize === "number" && Number.isFinite(fontSize) && fontSize > 0 ? fontSize : 14;
+  const safeFontWeight = typeof fontWeight === "number" ? fontWeight : 400;
+  const safeLetterSpacing = typeof letterSpacing === "number" && Number.isFinite(letterSpacing) ? letterSpacing : 0;
+  const safeHeight = typeof height === "number" && Number.isFinite(height) ? height : safeFontSize * 1.4;
 
-  // x,y is now the TOP-LEFT of the textbox (matching Open Pencil <g transform> pattern).
-  // No more adjustedX/adjustedY hacks — the overlay sits exactly at the box origin.
+  const isAutoWidth = safeWidth === "auto";
+  const resizeMode = textAutoResize ?? "WIDTH_AND_HEIGHT";
+  // During editing, disable auto-wrapping entirely: only explicit Enter (\n)
+  // creates a new line. This ensures typing long text stays on one line and
+  // overflows visibly (box expands) instead of wrapping or being hidden.
+  const wrapWidth = 0;
+
+  // Use the exact same line-splitting & measurement as the SVG renderer.
+  const measureProps = {
+    fontFamily: fontFamily || "Inter",
+    fontSize: safeFontSize,
+    fontWeight: safeFontWeight,
+    italic: Boolean(italic),
+    letterSpacing: safeLetterSpacing,
+    textCase,
+  } as const;
+
+  let lines: ReturnType<typeof getTextLines>;
+  try {
+    lines = getTextLines(safeContent, measureProps as never, wrapWidth);
+  } catch {
+    lines = [];
+  }
+
+  const lineHeightPx = getLineHeight({ lineHeight, fontSize: safeFontSize });
+  const blockHeightRaw = getTextBlockHeight(lines, { lineHeight, fontSize: safeFontSize });
+  // Renderer uses 0 for empty; editing overlay needs at least one line height so
+  // the caret is visible at the same height as a single-line preview.
+  const blockHeight = lines.length === 0 ? lineHeightPx : blockHeightRaw;
+  const measuredWidth = Math.max(getTextBlockWidth(lines), 20);
+  // During editing, the box expands to fit the longest line (even for fixed-width
+  // HEIGHT mode) so the text never wraps or hides while typing.
+  const boxWidth = isAutoWidth ? measuredWidth : Math.max(measuredWidth, safeWidth as number);
+  // For auto-height modes the box hugs the content height (mirrors computeAutoSize);
+  // for fixed (NONE) it stays at the stored height.
+  const isAutoHeight = resizeMode !== "NONE";
+  const boxHeight = safeHeight;
+  const containerHeight = isAutoHeight ? Math.max(blockHeight, safeFontSize * 1.4) : boxHeight;
+  const containerWidth = boxWidth;
+  const blockOffsetY = isAutoHeight ? 0 : getTextVerticalOffset(boxHeight, blockHeightRaw, textAlignVertical);
+
+  // Horizontal alignment: auto-width boxes are always start-anchored in the
+  // renderer (lineX=0, anchor=start) regardless of textAlign; justify is
+  // rendered as left. Mirror that here so centered text doesn't drift.
+  const effectiveTextAlign: "left" | "center" | "right" =
+    isAutoWidth || resizeMode === "WIDTH_AND_HEIGHT"
+      ? "left"
+      : textAlign === "justify"
+        ? "left"
+        : (textAlign as "left" | "center" | "right");
+
+  // x,y is the TOP-LEFT of the textbox (matching <g transform> origin).
+  const safeX = typeof x === "number" && Number.isFinite(x) ? x : 0;
+  const safeY = typeof y === "number" && Number.isFinite(y) ? y : 0;
 
   // Auto-focus on mount
   useEffect(() => {
@@ -102,15 +145,6 @@ export default function TextOverlay({
       el.select();
     }
   }, [layerId]);
-
-  // Auto-resize the textarea height whenever content changes.
-  useLayoutEffect(() => {
-    const el = textareaRef.current;
-    if (el) {
-      el.style.height = "auto";
-      el.style.height = Math.max(el.scrollHeight, fontSize * 1.6) + "px";
-    }
-  }, [content, fontSize]);
 
   // Handle keyboard events
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -126,22 +160,6 @@ export default function TextOverlay({
     onCommit();
   };
 
-  // Vertical alignment: flex so the (auto-height) textarea sits at the top,
-  // center, or bottom of the fixed-height box — mirrors open-pencil's vertical
-  // text alignment in the editing overlay.
-  const alignY =
-    textAlignVertical === "center"
-      ? "center"
-      : textAlignVertical === "bottom"
-        ? "flex-end"
-        : "flex-start";
-
-  // Auto-resize modes: the overlay box hugs the content (open-pencil resizes
-  // the node while editing). Fixed (NONE) keeps the box height, growing only
-  // when content overflows so typing is never clipped.
-  const autoGrow = textAutoResize !== "NONE";
-  const overlayHeight = autoGrow ? undefined : Math.max(height, fontSize * 1.6);
-
   const textTransform =
     textCase === "UPPER"
       ? "uppercase"
@@ -151,42 +169,58 @@ export default function TextOverlay({
           ? "capitalize"
           : "none";
 
+  // Editing outline is drawn with outline (not border/padding) so the content
+  // box stays exactly boxWidth x boxHeight — same as the SVG <text> box and
+  // background <rect>. Padding is zero so text origin matches the renderer's
+  // <g transform> origin exactly.
   return (
     <div
-      className="absolute z-50 flex"
+      className="absolute z-50"
       style={{
-        left: x,
-        top: y,
-        width: overlayWidth,
-        minWidth: 60,
-        minHeight: height || fontSize * 1.4,
-        height: overlayHeight,
-        alignItems: alignY,
-        background: backgroundColor ?? "rgba(59, 130, 246, 0.06)",
-        border: backgroundColor
-          ? "1px solid rgba(255, 255, 255, 0.15)"
-          : "1px solid rgba(59, 130, 246, 0.4)",
-        borderRadius: "2px",
-        padding: "4px",
+        left: safeX,
+        top: safeY,
+        width: containerWidth,
+        height: containerHeight,
+        // Re-enable hit-testing: the wrapping <foreignObject> is pointer-events:none
+        // so canvas clicks still reach the SVG underneath, while the editing box
+        // itself stays focusable/editable.
+        pointerEvents: "auto",
+        background: backgroundColor ?? "transparent",
+        // Editing indicator without affecting layout — matches selection rect styling
+        // (1px blue). Uses outline so it doesn't inset the text.
+        outline: "1px solid rgba(59, 130, 246, 0.9)",
+        outlineOffset: "0px",
+        borderRadius: "3px",
+        padding: 0,
+        overflow: "visible",
+        boxSizing: "border-box",
       }}
     >
+      {/* Background rect mirror (rx=3 in renderer) is the container background;
+          text block is positioned at blockOffsetY to mirror getTextVerticalOffset */}
       <textarea
         ref={textareaRef}
-        value={content}
+        value={safeContent}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
         onBlur={handleBlur}
-        className="w-full resize-none overflow-hidden"
+        wrap="off"
+        className="resize-none text-edit-textarea"
         style={{
+          position: "absolute",
+          left: 0,
+          top: blockOffsetY,
+          width: containerWidth,
+          height: blockHeight,
           background: "transparent",
           border: "none",
           outline: "none",
-          fontFamily,
-          fontSize,
-          fontWeight,
+          fontFamily: fontFamily || "Inter",
+          fontSize: safeFontSize,
+          fontWeight: safeFontWeight,
           fontStyle: italic ? "italic" : "normal",
           color,
-          textAlign,
+          textAlign: effectiveTextAlign,
           textTransform,
           textDecoration:
             textDecoration === "UNDERLINE"
@@ -194,14 +228,22 @@ export default function TextOverlay({
               : textDecoration === "STRIKETHROUGH"
                 ? "line-through"
                 : "none",
-          letterSpacing: letterSpacing ? `${letterSpacing}px` : undefined,
-          lineHeight: lineHeight ? lineHeight / fontSize : 1.4,
+          letterSpacing: safeLetterSpacing ? `${safeLetterSpacing}px` : undefined,
+          lineHeight: `${lineHeightPx / safeFontSize}`,
           padding: 0,
           margin: 0,
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-          overflowWrap: "break-word",
+          whiteSpace: "pre",
+          wordBreak: "normal",
+          overflowWrap: "normal",
           caretColor: color,
+          resize: "none",
+          overflow: "hidden",
+          overflowX: "hidden",
+          overflowY: "hidden",
+          scrollbarWidth: "none",
+          msOverflowStyle: "none",
+          boxSizing: "border-box",
+          display: "block",
         }}
         autoComplete="off"
         autoCorrect="off"

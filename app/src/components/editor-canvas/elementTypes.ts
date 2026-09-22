@@ -36,6 +36,10 @@ export interface TextElementProperties {
   textDecoration?: "NONE" | "UNDERLINE" | "STRIKETHROUGH";
   /** Text case transform — matches open-pencil's textCase. */
   textCase?: "ORIGINAL" | "UPPER" | "LOWER" | "TITLE";
+  /** Flip horizontally (mirror across Y axis). The renderer wraps the text box. */
+  flipH?: boolean;
+  /** Flip vertically (mirror across X axis). */
+  flipV?: boolean;
   /** CSS animation applied to this text element. Embedded as @keyframes in exported SVG. */
   animation?: AnimationConfig;
 }
@@ -115,6 +119,10 @@ export interface PathElementProperties {
   closed: boolean;
   /** Rotation in degrees around the path's center (0–360). */
   rotation?: number;
+  /** Flip horizontally (mirror across Y axis). */
+  flipH?: boolean;
+  /** Flip vertically (mirror across X axis). */
+  flipV?: boolean;
   /** CSS animation applied to this path. Embedded as @keyframes in exported SVG. */
   animation?: AnimationConfig;
 }

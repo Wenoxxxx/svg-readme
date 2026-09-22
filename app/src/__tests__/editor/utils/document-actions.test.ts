@@ -3,6 +3,7 @@ import {
   HISTORY_LIMIT,
   pushHistory,
   redoDocument,
+  reorderChild,
   reorderSelectedLayers,
   undoDocument,
   type DocumentHistory,
@@ -36,6 +37,7 @@ const snapshot = (ids: string[], positions = ids.map((_, index) => index)): Docu
   layers: ids.map(layer),
   elementProperties: Object.fromEntries(ids.map((id, index) => [id, props(positions[index] ?? 0)])),
   selectedLayerIds: ids.slice(0, 1),
+  frameSize: { width: 700, height: 350 },
 });
 
 const history = (past: DocumentSnapshot[], future: DocumentSnapshot[] = []): DocumentHistory => ({
@@ -90,6 +92,19 @@ describe("document actions", () => {
     expect(result.snapshot?.elementProperties).not.toBe(original.elementProperties);
   });
 
+  it("carries frameSize through undo/redo snapshots", () => {
+    const previous = snapshot(["one"], [10]);
+    const resized = {
+      ...snapshot(["one"], [10]),
+      frameSize: { width: 800, height: 200 },
+    };
+
+    const undone = undoDocument(history([previous]), resized);
+    expect(undone.snapshot?.frameSize).toEqual({ width: 700, height: 350 });
+    // The current (resized) state is preserved for redo.
+    expect(undone.history.future[0].frameSize).toEqual({ width: 800, height: 200 });
+  });
+
   it("leaves history unchanged when undo or redo has no available snapshot", () => {
     const current = snapshot(["one"]);
     const empty = history([]);
@@ -125,6 +140,75 @@ describe("document actions", () => {
       "a",
       "d",
     ]);
+  });
+});
+
+describe("reorderChild", () => {
+  /** A tree-shaped layer: flat document order plus a `parentId` link. */
+  const node = (
+    id: string,
+    parentId: string | null = null,
+    type: LayerType["type"] = "shape",
+  ): LayerType => ({ ...layer(id), parentId, type });
+
+  it("moves a layer to a new slot within its parent", () => {
+    const layers = [layer("a"), layer("b"), layer("c"), layer("d")];
+
+    expect(reorderChild(layers, "d", null, 1).map((l) => l.id)).toEqual([
+      "a",
+      "d",
+      "b",
+      "c",
+    ]);
+    // Appending clamps to the end of the sibling list.
+    expect(reorderChild(layers, "a", null, 99).map((l) => l.id)).toEqual([
+      "b",
+      "c",
+      "d",
+      "a",
+    ]);
+  });
+
+  it("re-parents a layer under a group and appends it to that group's children", () => {
+    const layers = [
+      node("g", null, "group"),
+      node("a", "g"),
+      node("b", "g"),
+      node("c"),
+    ];
+
+    const result = reorderChild(layers, "c", "g", 1);
+
+    expect(result.map((l) => l.id)).toEqual(["g", "a", "c", "b"]);
+    expect(result.find((l) => l.id === "c")?.parentId).toBe("g");
+  });
+
+  it("moves a nested layer back to the root level", () => {
+    const layers = [node("g", null, "group"), node("a", "g"), layer("c")];
+
+    const result = reorderChild(layers, "a", null, 2);
+
+    expect(result.map((l) => l.id)).toEqual(["g", "c", "a"]);
+    expect(result.find((l) => l.id === "a")?.parentId).toBeNull();
+  });
+
+  it("rejects a move into the layer's own subtree, itself, or an unknown parent", () => {
+    const layers = [node("g", null, "group"), node("a", "g"), node("b", "g")];
+
+    expect(reorderChild(layers, "g", "a", 0)).toBe(layers);
+    expect(reorderChild(layers, "a", "a", 0)).toBe(layers);
+    expect(reorderChild(layers, "a", "ghost", 0)).toBe(layers);
+    expect(reorderChild(layers, "ghost", null, 0)).toBe(layers);
+  });
+
+  it("does not mutate the incoming document", () => {
+    const layers = [layer("a"), layer("b"), layer("c")];
+    const order = layers.map((l) => l.id);
+
+    const result = reorderChild(layers, "a", null, 2);
+
+    expect(result).not.toBe(layers);
+    expect(layers.map((l) => l.id)).toEqual(order);
   });
 });
 

@@ -18,6 +18,8 @@ interface EditorRightBarProps {
   /** Bulk-edit action applied to ALL currently selected layers (B10 multi-edit). */
   onBulkUpdateProperties?: (updates: Partial<import("../../editor-canvas/ElementsRenderer").ElementProperties>) => void;
   onPropertiesStart?: () => void;
+  /** Fired before a canvas (frame) resize so the change lands in undo history. */
+  onCanvasResizeStart?: () => void;
   onMoveElement?: (id: string, x: number, y: number) => void;
   onAlignmentStart?: () => void;
   /** Canvas size — used to align a single layer to the frame (B7). */
@@ -34,6 +36,7 @@ export default function EditorRightBar({
   onUpdateProperties,
   onBulkUpdateProperties,
   onPropertiesStart,
+  onCanvasResizeStart,
   onMoveElement,
   onAlignmentStart,
   frameSize,
@@ -124,6 +127,7 @@ export default function EditorRightBar({
             onUpdateProperties={onUpdateProperties}
             onBulkUpdateProperties={onBulkUpdateProperties}
             onPropertiesStart={onPropertiesStart}
+            onCanvasResizeStart={onCanvasResizeStart}
             onMoveElement={onMoveElement}
             onAlignmentStart={onAlignmentStart}
             multiSelectCount={selectedLayerIds?.length ?? 0}

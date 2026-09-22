@@ -1,8 +1,8 @@
 import { useState, useRef, useCallback } from "react";
-import type { LayerType } from "../../context/EditorContext";
-import type { ElementProperties } from "../../components/editor-canvas/ElementsRenderer";
-import { parseSvgMarkup } from "../../lib/importSvg";
-import { parseDesignJson, DesignFileError } from "../../lib/designFile";
+import type { LayerType } from "../../../context/EditorContext";
+import type { ElementProperties } from "../../../components/editor-canvas/ElementsRenderer";
+import { parseSvgMarkup } from "../../../lib/importSvg";
+import { parseDesignJson, DesignFileError } from "../../../lib/designFile";
 
 export interface SvgImportParams {
   saveToHistory: () => void;

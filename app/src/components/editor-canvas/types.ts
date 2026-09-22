@@ -109,6 +109,10 @@ export interface ResizeState {
   initialY: number;
   initialWidth: number;
   initialHeight: number;
+  /** Tag for textbox-specific minimums; when true, min is MIN_TEXTBOX_SIZE (20) not MIN_SHAPE_SIZE (10). */
+  isText?: boolean;
+  /** Captured textAutoResize at drag start — drives WIDTH_AND_HEIGHT→HEIGHT transition logic. */
+  textAutoResize?: "NONE" | "HEIGHT" | "WIDTH_AND_HEIGHT";
   /** Multi-select resize: all selected ids + their original boxes + the
    *  original selection bounds. When present, every element is proportionally
    *  remapped through the old → new selection bounds. */
@@ -195,6 +199,11 @@ export interface CanvasProps {
   /** Called when an element is clicked with Shift held — toggles multi-select.
    *  If not provided, falls back to onSelectLayer. */
   onShiftSelectLayer?: (id: string) => void;
+  /** Right-click on an element: opens the selection context menu. The handler
+   *  is responsible for selecting the layer first when it is not selected. */
+  onElementContextMenu?: (e: React.MouseEvent, layerId: string) => void;
+  /** Right-click on empty canvas: opens the menu for the current selection. */
+  onCanvasContextMenu?: (e: React.MouseEvent) => void;
   /** Called when empty canvas is clicked — clears all selection.
    *  If not provided, falls back to onSelectLayer(null). */
   onClearSelection?: () => void;

@@ -1,11 +1,14 @@
-import type { LayerType } from "../../context/EditorContext";
+import type { LayerType, FrameSize } from "../../context/EditorContext";
 import type { ElementProperties } from "../../components/editor-canvas/ElementsRenderer";
+import { collectDescendantIds } from "./layerTree/model";
 import { translatePoints } from "./pathUtils";
 
 export interface DocumentSnapshot {
   layers: LayerType[];
   elementProperties: Record<string, ElementProperties>;
   selectedLayerIds: string[];
+  /** Canvas (frame) size — included so resizes participate in undo/redo. */
+  frameSize: FrameSize;
 }
 
 export interface DocumentHistory {
@@ -49,6 +52,7 @@ export function cloneDocumentSnapshot(snapshot: DocumentSnapshot): DocumentSnaps
       Object.entries(snapshot.elementProperties).map(([id, properties]) => [id, { ...properties }]),
     ) as Record<string, ElementProperties>,
     selectedLayerIds: [...snapshot.selectedLayerIds],
+    frameSize: { ...snapshot.frameSize },
   };
 }
 
@@ -181,7 +185,10 @@ export function ungroupLayer(
 /**
  * Check if selected layers can be grouped (same parent, >= 2 non-group leaf layers).
  */
-export function canGroupLayers(layers: LayerType[], selectedLayerIds: string[]): boolean {
+export function canGroupLayers(
+  layers: readonly LayerType[],
+  selectedLayerIds: readonly string[],
+): boolean {
   if (selectedLayerIds.length < 2) return false;
   const selectedLayers = layers.filter((l) => selectedLayerIds.includes(l.id));
   const firstParent = selectedLayers[0]?.parentId ?? null;
@@ -326,4 +333,60 @@ export function reorderSelectedLayers(
     [result[index - 1], result[index]] = [result[index], result[index - 1]];
   }
   return result;
+}
+
+/**
+ * Move `sourceId` under `parentId` at the given sibling slot.
+ *
+ * The one operation the layer panel's drag & drop needs: it re-parents the
+ * layer and repositions it in the flat document order, which is what the tree
+ * projection reads to work out sibling order. `index` is the slot among the
+ * parent's children *after* the source has been detached (that is exactly what
+ * `resolveDropTarget` produces).
+ *
+ * Invalid moves are rejected by returning the input unchanged — the source
+ * itself, into its own subtree, or onto a parent that does not exist.
+ */
+export function reorderChild(
+  layers: LayerType[],
+  sourceId: string,
+  parentId: string | null,
+  index: number,
+): LayerType[] {
+  const source = layers.find((layer) => layer.id === sourceId);
+  if (!source) return layers;
+
+  if (parentId !== null) {
+    if (parentId === sourceId) return layers;
+    if (!layers.some((layer) => layer.id === parentId)) return layers;
+    if (collectDescendantIds(layers, sourceId).includes(parentId)) return layers;
+  }
+
+  const remaining = layers.filter((layer) => layer.id !== sourceId);
+  const siblings = remaining.filter(
+    (layer) => (layer.parentId ?? null) === parentId,
+  );
+  const slot = Math.max(0, Math.min(index, siblings.length));
+
+  let insertAt: number;
+  if (slot < siblings.length) {
+    // In front of the sibling currently occupying the slot.
+    insertAt = remaining.indexOf(siblings[slot]);
+  } else if (siblings.length > 0) {
+    // Appending: just after the last sibling. Sibling order is what the tree
+    // projection reads, and inserting directly after the last sibling keeps the
+    // source last without having to walk that sibling's subtree.
+    insertAt = remaining.indexOf(siblings[siblings.length - 1]) + 1;
+  } else if (parentId !== null) {
+    // First child of an empty parent: keep it next to its new parent.
+    insertAt = remaining.findIndex((layer) => layer.id === parentId) + 1;
+  } else {
+    insertAt = remaining.length;
+  }
+
+  return [
+    ...remaining.slice(0, insertAt),
+    { ...source, parentId },
+    ...remaining.slice(insertAt),
+  ];
 }

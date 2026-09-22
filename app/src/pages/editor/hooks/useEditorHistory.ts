@@ -7,7 +7,7 @@ import {
   type DocumentSnapshot,
 } from "../../../lib/editor/documentActions";
 import type { ElementProperties } from "../../../components/editor-canvas/ElementsRenderer";
-import type { LayerType } from "../../../context/EditorContext";
+import type { LayerType, FrameSize } from "../../../context/EditorContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -21,6 +21,7 @@ interface DocumentRef {
     layers: LayerType[];
     elementProperties: Record<string, ElementProperties>;
     selectedLayerIds: string[];
+    frameSize: FrameSize;
   };
 }
 
@@ -30,6 +31,7 @@ interface UseEditorHistoryParams {
   setElementProperties: React.Dispatch<React.SetStateAction<Record<string, ElementProperties>>>;
   setSelectedLayerIds: React.Dispatch<React.SetStateAction<string[]>>;
   setSelectedLayerId: (id: string | null) => void;
+  setFrameSize: (size: FrameSize) => void;
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -44,6 +46,7 @@ export function useEditorHistory({
   setElementProperties,
   setSelectedLayerIds,
   setSelectedLayerId,
+  setFrameSize,
 }: UseEditorHistoryParams) {
   const [history, setHistory] = useState<HistoryState>({
     past: [],
@@ -54,6 +57,7 @@ export function useEditorHistory({
     layers: documentRef.current.layers,
     elementProperties: documentRef.current.elementProperties,
     selectedLayerIds: documentRef.current.selectedLayerIds,
+    frameSize: documentRef.current.frameSize,
   }), [documentRef]);
 
   const saveToHistory = useCallback(() => {
@@ -70,7 +74,8 @@ export function useEditorHistory({
     setElementProperties(snapshot.elementProperties);
     setSelectedLayerIds(snapshot.selectedLayerIds);
     setSelectedLayerId(snapshot.selectedLayerIds[0] ?? null);
-  }, [setLayers, setElementProperties, setSelectedLayerIds, setSelectedLayerId]);
+    setFrameSize(snapshot.frameSize);
+  }, [setLayers, setElementProperties, setSelectedLayerIds, setSelectedLayerId, setFrameSize]);
 
   const handleUndo = useCallback(() => {
     const transition = undoDocument(history, currentSnapshot());

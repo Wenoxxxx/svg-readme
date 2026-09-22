@@ -30,3 +30,6 @@ coverage/
 
 # Vite
 .vite/
+
+# Local tooling caches
+.codegraph/

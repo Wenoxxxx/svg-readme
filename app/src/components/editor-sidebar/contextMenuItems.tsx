@@ -1,211 +1,130 @@
 import {
-  Copy,
-  Trash,
-  ArrowFatLineUp,
-  ArrowFatLineDown,
-  ArrowUp,
-  ArrowDown,
-  Stack,
+  ScribbleLoop,
   StackSimple,
-  Eye,
-  EyeSlash,
-  Lock,
-  LockOpen,
-  List,
-  FrameCorners,
-  Clipboard,
+  TextT,
 } from "@phosphor-icons/react";
-import type { ContextMenuItem } from "./LayerContextMenu";
+import type {
+  ContextMenuAction,
+  ContextMenuItem,
+} from "./LayerContextMenu";
+import type { LayerCommandId } from "../../lib/editor/commands/layerCommands";
+import { buildLayerCommands } from "../../lib/editor/commands/layerCommands";
+import {
+  buildLayerMenu,
+  type LayerMenuCommand,
+  type LayerMenuItem,
+} from "../../lib/editor/commands/layerMenuLayout";
+import type { ShortcutPlatform } from "../../lib/editor/commands/shortcuts";
+import { computeSelectionCapabilities } from "../../lib/editor/selectionCapabilities";
+import type { LayerType } from "../../context/EditorContext";
+import type { ElementProperties } from "../editor-canvas/ElementsRenderer";
 
-export interface LayerActionCallbacks {
-  onDuplicate?: () => void;
-  onDelete?: () => void;
-  onBringForward?: () => void;
-  onBringToFront?: () => void;
-  onSendBackward?: () => void;
-  onSendToBack?: () => void;
-  onGroup?: () => void;
-  onUngroup?: () => void;
-  onToggleVisibility?: () => void;
-  onToggleLock?: () => void;
-  onFlatten?: () => void;
-  onOutlineText?: () => void;
-  onOutlineStroke?: () => void;
-  onWrapInFrame?: () => void;
-  onToggleMask?: () => void;
-  onBooleanUnion?: () => void;
-  onBooleanSubtract?: () => void;
-  onBooleanIntersect?: () => void;
-  onBooleanExclude?: () => void;
-  onCopyAsPng?: () => void;
+/**
+ * Presentation for the layer context menu.
+ *
+ * The *structure* (order, grouping, separators, submenu) lives in the pure
+ * `layerMenuLayout` module and the *copy* (labels, shortcuts, enabled state)
+ * lives in the command registry. This module does the one thing neither can:
+ * attach the handful of icons the reference menu shows.
+ *
+ * Only Flatten, Outline text and Outline stroke carry an icon in the reference;
+ * every other row is text-only, so there is no reserved icon column and labels
+ * are not indented to accommodate one.
+ */
+const MENU_ICONS: Partial<Record<LayerCommandId, React.ReactNode>> = {
+  flatten: <StackSimple className="w-3.5 h-3.5" />,
+  outlineText: <TextT className="w-3.5 h-3.5" />,
+  outlineStroke: <ScribbleLoop className="w-3.5 h-3.5" />,
+};
+
+/** Attach the icon (and nothing else) to a resolved menu command. */
+function toContextMenuItem(entry: LayerMenuCommand): ContextMenuAction {
+  return {
+    id: entry.id,
+    label: entry.label,
+    ...(MENU_ICONS[entry.id] ? { icon: MENU_ICONS[entry.id] } : {}),
+    ...(entry.shortcut ? { shortcut: entry.shortcut } : {}),
+    disabled: !entry.enabled,
+    ...(entry.accent ? { accent: true } : {}),
+  };
 }
 
-export function buildLayerContextMenu(
-  options: {
-    isGroup?: boolean;
-    isText?: boolean;
-    isShape?: boolean;
-    isPath?: boolean;
-    isImage?: boolean;
-    isLocked?: boolean;
-    isVisible?: boolean;
-    canGroup?: boolean;
-    canUngroup?: boolean;
-    multiSelected?: boolean;
-    /** ≥2 selected shape/path layers — enables real boolean ops. */
-    canBoolean?: boolean;
-    /** Selected layer can act as a mask (shape/path/text inside a group). */
-    canMask?: boolean;
-    /** Selected layer is a text element — enables Outline Text. */
-    canOutlineText?: boolean;
-    /** Selected layer is a shape/path — enables Outline Stroke. */
-    canOutlineStroke?: boolean;
-  } = {},
-): ContextMenuItem[] {
-  const items: ContextMenuItem[] = [];
-
-  // ── Group 1: Cut/Copy/Duplicate/Delete ──────────────────────────────────
-  items.push(
-    {
-      id: "duplicate",
-      label: "Duplicate",
-      icon: <Copy className="w-3.5 h-3.5" />,
-      shortcut: "\u2318D",
-    },
-    {
-      id: "delete",
-      label: "Delete",
-      icon: <Trash className="w-3.5 h-3.5" />,
-      shortcut: "\u232B",
-      destructive: true,
-    },
-  );
-
-  items.push({ separator: true });
-
-  // ── Group 2: Ordering ──────────────────────────────────────────────────
-  items.push(
-    {
-      id: "bringToFront",
-      label: "Bring to Front",
-      icon: <ArrowFatLineUp className="w-3.5 h-3.5" />,
-      shortcut: "\u2318\u21E7]",
-    },
-    {
-      id: "bringForward",
-      label: "Bring Forward",
-      icon: <ArrowUp className="w-3.5 h-3.5" />,
-      shortcut: "\u2318]",
-    },
-    {
-      id: "sendBackward",
-      label: "Send Backward",
-      icon: <ArrowDown className="w-3.5 h-3.5" />,
-      shortcut: "\u2318[",
-    },
-    {
-      id: "sendToBack",
-      label: "Send to Back",
-      icon: <ArrowFatLineDown className="w-3.5 h-3.5" />,
-      shortcut: "\u2318\u21E7[",
-    },
-  );
-
-  items.push({ separator: true });
-
-  // ── Group 3: Group/Ungroup/Frame/Boolean ────────────────────────────────
-  if (options.canGroup) {
-    items.push({
-      id: "group",
-      label: "Group Selection",
-      icon: <Stack className="w-3.5 h-3.5" />,
-      shortcut: "\u2318G",
-    });
-  }
-  if (options.canUngroup) {
-    items.push({
-      id: "ungroup",
-      label: "Ungroup",
-      icon: <StackSimple className="w-3.5 h-3.5" />,
-      shortcut: "\u2318\u21E7G",
-    });
-  }
-
-  items.push(
-    {
-      id: "wrapInFrame",
-      label: "Frame Selection",
-      icon: <FrameCorners className="w-3.5 h-3.5" />,
-    },
-    {
-      id: "flatten",
-      label: "Flatten",
-      icon: <List className="w-3.5 h-3.5" />,
-      disabled: !options.isGroup,
-    },
-  );
-
-  // ── Group 3b: Boolean ops / masks / outlines ───────────────────────────
-  if (options.canBoolean) {
-    items.push({
-      id: "boolean",
-      label: "Boolean",
-      icon: <List className="w-3.5 h-3.5" />,
-      children: [
-        { id: "booleanUnion", label: "Union" },
-        { id: "booleanSubtract", label: "Subtract" },
-        { id: "booleanIntersect", label: "Intersect" },
-        { id: "booleanExclude", label: "Exclude" },
-      ],
-    });
-  }
-  if (options.canOutlineText || options.canOutlineStroke) {
-    if (options.canOutlineText) {
-      items.push({ id: "outlineText", label: "Outline Text" });
+function toContextMenuItems(menu: LayerMenuItem[]): ContextMenuItem[] {
+  return menu.map((entry): ContextMenuItem => {
+    if (entry.kind === "separator") return { separator: true };
+    if (entry.kind === "submenu") {
+      return {
+        id: entry.id,
+        label: entry.label,
+        disabled: !entry.enabled,
+        children: entry.children.map(toContextMenuItem),
+      };
     }
-    if (options.canOutlineStroke) {
-      items.push({ id: "outlineStroke", label: "Outline Stroke" });
-    }
-  }
-  if (options.canMask) {
-    items.push({
-      id: "toggleMask",
-      label: "Use as Mask",
-      icon: <FrameCorners className="w-3.5 h-3.5" />,
-    });
-  }
+    return toContextMenuItem(entry);
+  });
+}
 
-  items.push({ separator: true });
+/**
+ * Build the context menu for the *current selection*, whatever surface opened
+ * it (layer panel row or canvas right-click).
+ *
+ * Mirrors OpenPencil's split between `menu-model/canvas` and the renderer: the
+ * gating lives in `selectionCapabilities` + `layerCommands`, the layout in
+ * `layerMenuLayout`, and both call sites go through here so the canvas menu can
+ * never drift from the layer tab's.
+ *
+ * Returns an empty list when nothing is selected — callers use that to decide
+ * whether a menu should open at all.
+ *
+ * @param anchorLayerId Layer the pointer targeted. When it is part of the
+ *   selection it supplies the Show/Hide + Lock/Unlock wording; otherwise the
+ *   first selected layer stands in (Figma keeps the multi-selection on
+ *   right-click rather than collapsing it to the clicked layer).
+ */
+export function buildSelectionContextMenu(options: {
+  layers: readonly LayerType[];
+  elementProperties: Readonly<Record<string, ElementProperties>>;
+  anchorLayerId?: string | null;
+  /** Whether the editor clipboard holds layers (Paste here / Paste to replace). */
+  hasClipboard?: boolean;
+  /** How many top-level layers the clipboard holds. */
+  clipboardCount?: number;
+  /** Platform used for shortcut labels; defaults to the running one. */
+  platform?: ShortcutPlatform;
+}): ContextMenuItem[] {
+  const {
+    layers,
+    elementProperties,
+    anchorLayerId = null,
+    hasClipboard,
+    clipboardCount,
+    platform,
+  } = options;
 
-  // ── Group 4: Visibility / Lock / Copy as PNG ────────────────────────────
-  items.push(
-    {
-      id: "toggleVisibility",
-      label: options.isVisible ? "Hide" : "Show",
-      icon: options.isVisible ? (
-        <EyeSlash className="w-3.5 h-3.5" />
-      ) : (
-        <Eye className="w-3.5 h-3.5" />
-      ),
+  // `layer.active` is the panel's selection mirror and is kept in sync with
+  // `selectedLayerIds` by EditorContext for every selection path.
+  const selectedLayerIds = layers.filter((l) => l.active === true).map((l) => l.id);
+  if (selectedLayerIds.length === 0) return [];
+
+  const targetId =
+    anchorLayerId && selectedLayerIds.includes(anchorLayerId)
+      ? anchorLayerId
+      : selectedLayerIds[0];
+  const target = layers.find((l) => l.id === targetId);
+
+  const commands = buildLayerCommands({
+    capabilities: computeSelectionCapabilities({
+      layers,
+      selectedLayerIds,
+      elementProperties,
+      hasClipboard,
+      clipboardCount,
+    }),
+    context: {
+      targetMasked: target?.masked === true,
     },
-    {
-      id: "toggleLock",
-      label: options.isLocked ? "Unlock" : "Lock",
-      icon: options.isLocked ? (
-        <LockOpen className="w-3.5 h-3.5" />
-      ) : (
-        <Lock className="w-3.5 h-3.5" />
-      ),
-    },
-  );
-
-  items.push({ separator: true });
-
-  items.push({
-    id: "copyAsPng",
-    label: "Copy as PNG",
-    icon: <Clipboard className="w-3.5 h-3.5" />,
+    ...(platform ? { platform } : {}),
   });
 
-  return items;
+  return toContextMenuItems(buildLayerMenu(commands));
 }
