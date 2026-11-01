@@ -89,7 +89,7 @@
 
 @font-face {
   font-family: "Poppins";
-  src: url("./assets/fonts/poppins/regular.ttf") format("truetype");
+  src: url("./assets/fonts/woff2/Poppins-400.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -97,7 +97,7 @@
 
 @font-face {
   font-family: "Poppins";
-  src: url("./assets/fonts/poppins/medium.ttf") format("truetype");
+  src: url("./assets/fonts/woff2/Poppins-500.woff2") format("woff2");
   font-weight: 500;
   font-style: normal;
   font-display: swap;
@@ -105,7 +105,7 @@
 
 @font-face {
   font-family: "Poppins";
-  src: url("./assets/fonts/poppins/semi-bold.ttf") format("truetype");
+  src: url("./assets/fonts/woff2/Poppins-600.woff2") format("woff2");
   font-weight: 600;
   font-style: normal;
   font-display: swap;
@@ -113,7 +113,7 @@
 
 @font-face {
   font-family: "Poppins";
-  src: url("./assets/fonts/poppins/bold.ttf") format("truetype");
+  src: url("./assets/fonts/woff2/Poppins-700.woff2") format("woff2");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
@@ -121,8 +121,7 @@
 
 @font-face {
   font-family: "JetBrains Mono";
-  src: url("./assets/fonts/jetbrains-mono/static/regular.ttf")
-    format("truetype");
+  src: url("./assets/fonts/woff2/JetBrainsMono-400.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -130,7 +129,7 @@
 
 @font-face {
   font-family: "JetBrains Mono";
-  src: url("./assets/fonts/jetbrains-mono/static/medium.ttf") format("truetype");
+  src: url("./assets/fonts/woff2/JetBrainsMono-500.woff2") format("woff2");
   font-weight: 500;
   font-style: normal;
   font-display: swap;
@@ -138,7 +137,7 @@
 
 @font-face {
   font-family: "JetBrains Mono";
-  src: url("./assets/fonts/jetbrains-mono/static/bold.ttf") format("truetype");
+  src: url("./assets/fonts/woff2/JetBrainsMono-700.woff2") format("woff2");
   font-weight: 700;
   font-style: normal;
   font-display: swap;

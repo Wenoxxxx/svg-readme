@@ -143,7 +143,7 @@ export function buildQuickBanner({
     motionMarkup =
       words.length === 0
         ? ""
-        : `<tspan class="${uid}-type" x="${baseX}" y="${tagY}">${esc(tagline)}</tspan><tspan class="${uid}-caret}" dx="4">▍</tspan>`;
+        : `<tspan class="${uid}-type" x="${baseX}" y="${tagY}">${esc(tagline)}</tspan><tspan class="${uid}-caret" dx="4">▍</tspan>`;
   } else {
     motionCSS = `
         .${uid}-handle{opacity:0;animation:${uid}fadeIn .6s ease forwards .1s;}

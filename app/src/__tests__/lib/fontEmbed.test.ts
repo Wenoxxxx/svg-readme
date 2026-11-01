@@ -121,8 +121,7 @@ describe("embedFonts", () => {
     const out = await embedFonts(svg, props);
     expect(out).not.toContain("fonts.googleapis.com");
     expect(out).toContain("@font-face");
-    expect(out).toContain("data:font/ttf;base64");
-    // Keep the <text> content untouched
+    expect(out).toContain("data:font/woff2;base64");
     expect(out).toContain('font-family="Poppins"');
   });
 

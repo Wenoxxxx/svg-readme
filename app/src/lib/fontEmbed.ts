@@ -11,7 +11,7 @@ import type { ElementProperties } from "../components/editor-canvas/ElementsRend
  * Strategy:
  *   1. Collect the unique (family, weight) pairs used by text elements.
  *   2. Resolve each pair to font bytes:
- *      - Poppins / JetBrains Mono are bundled locally (TTF assets).
+ *      - Poppins / JetBrains Mono are bundled locally (WOFF2 assets).
  *      - Other families (Inter, Roboto, Outfit, …) are fetched from the
  *        Google Fonts CSS2 API (which is CORS-enabled), parsing out the woff2
  *        file URL.
@@ -70,15 +70,15 @@ export function buildFontFaceCSS(fonts: FontFaceData[]): string {
 
 // ─── Local font assets (bundled by Vite) ─────────────────────────────────────
 
-import poppinsRegular from "../assets/fonts/Poppins/regular.ttf?url";
-import poppinsMedium from "../assets/fonts/Poppins/medium.ttf?url";
-import poppinsSemiBold from "../assets/fonts/Poppins/semi-bold.ttf?url";
-import poppinsBold from "../assets/fonts/Poppins/bold.ttf?url";
-import jbmRegular from "../assets/fonts/jetbrains-mono/static/regular.ttf?url";
-import jbmMedium from "../assets/fonts/jetbrains-mono/static/medium.ttf?url";
-import jbmBold from "../assets/fonts/jetbrains-mono/static/bold.ttf?url";
+import poppinsRegular from "../assets/fonts/woff2/Poppins-400.woff2?url";
+import poppinsMedium from "../assets/fonts/woff2/Poppins-500.woff2?url";
+import poppinsSemiBold from "../assets/fonts/woff2/Poppins-600.woff2?url";
+import poppinsBold from "../assets/fonts/woff2/Poppins-700.woff2?url";
+import jbmRegular from "../assets/fonts/woff2/JetBrainsMono-400.woff2?url";
+import jbmMedium from "../assets/fonts/woff2/JetBrainsMono-500.woff2?url";
+import jbmBold from "../assets/fonts/woff2/JetBrainsMono-700.woff2?url";
 
-/** Bundled font files: family → weight → asset URL (TTF). */
+/** Bundled font files: family → weight → asset URL (WOFF2). */
 const LOCAL_FONT_ASSETS: Record<string, Record<number, string>> = {
   Poppins: {
     400: poppinsRegular,
@@ -163,9 +163,9 @@ export async function embedFonts(
       // 1. Local bundled TTF
       const local = LOCAL_FONT_ASSETS[req.family]?.[req.weight];
       if (local) {
-        const dataUrl = await fetchToDataUrl(local, "font/ttf");
+        const dataUrl = await fetchToDataUrl(local, "font/woff2");
         if (dataUrl) {
-          resolved.push({ family: req.family, weight: req.weight, dataUrl, format: "truetype" });
+          resolved.push({ family: req.family, weight: req.weight, dataUrl, format: "woff2" });
           continue;
         }
       }

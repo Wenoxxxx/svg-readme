@@ -5,6 +5,7 @@ Welcome to the svg-readme documentation hub.
 ## Table of Contents
 
 - [Getting Started](../README.md) — Project setup and installation
+- [Deployment](./deployment.md) — Vercel setup, env vars, smoke test, rollback
 - [App Documentation](./app/) — Feature documentation for the editor application
   - [Feature Index](./app/index.md) — Overview of all implemented features
   - [Text Tool](./app/text-tool.md) — Text creation and editing
@@ -27,6 +28,7 @@ explicit `.svg-readme.json` files (`app/src/lib/designFile.ts`, v1 schema):
 ```
 docs/
 ├── README.md          # This file
+├── deployment.md      # Deployment guide (Vercel, env vars, rollback)
 └── app/
     ├── README.md       # App-specific setup (Vite, React, Tailwind)
     ├── index.md        # Feature documentation index

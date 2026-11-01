@@ -1,8 +1,13 @@
 {
   "name": "svg-readme",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "Design animated SVG banners for your GitHub profile README, in the browser.",
+  "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

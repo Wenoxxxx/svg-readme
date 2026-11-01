@@ -16,18 +16,18 @@ export default function TopNav() {
           svg-readme
         </Link>
         <div className="flex gap-7 items-center">
-          <a
-            href="/#studio"
+          <Link
+            to="/#studio"
             className="text-sm text-zinc-500 hover:text-zinc-900 transition-colors no-underline"
           >
             Generator
-          </a>
-          <a
-            href="/#how"
+          </Link>
+          <Link
+            to="/#how"
             className="text-sm text-zinc-500 hover:text-zinc-900 transition-colors no-underline"
           >
             How it works
-          </a>
+          </Link>
           <Link
             to="/about"
             className="text-sm text-zinc-500 hover:text-zinc-900 transition-colors no-underline"

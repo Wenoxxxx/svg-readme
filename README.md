@@ -19,6 +19,7 @@ No backend. No database. Designs live in local `.svg-readme.json` files + browse
 | UI | React 19, React Router 7 (`/` landing, `/about`, `/contacts`, `/editor`) |
 | Build | Vite 8, TypeScript ~6 |
 | Styling | Tailwind CSS v4 (`@tailwindcss/vite`), `tailwind-scrollbar`, OJ branding preset (`oj-branding-preset`) + `app/tokens/design_tokens.json` (light/dark) |
+| Fonts | Poppins + JetBrains Mono, WOFF2 only (7 faces, ~314 kB total) |
 | Icons | `lucide-react` + `@phosphor-icons/react` |
 | State | React context (`EditorContext`), localStorage + sessionStorage handoff (no server) |
 | SVG / export | Hand-built SVG string builders (`lib/export/buildSvg`, `animatedExport`), keyframe animations (transform/opacity only, export-safe) |
@@ -68,13 +69,14 @@ npm run install:all   # installs app/ dependencies
 ### Commands
 
 ```bash
-npm run dev              # Vite dev server — run from repo root
-cd app && npm run build      # Type-check (tsc -b) + production build
-cd app && npm run preview    # Preview the production build
-cd app && npm run test       # Vitest suite (use --pool=threads on Windows; forks pool can time out)
-cd app && npm run test:watch # Vitest in watch mode
-cd app && npm run lint       # ESLint
+npm run dev                  # Vite dev server from repo root
+npm run build                # Type-check (tsc -b) + production build
+npm run preview              # Preview the production build
+npm run test                 # Vitest suite (use --pool=threads on Windows; forks pool can time out)
+npm run lint                 # ESLint
 ```
+
+Root scripts proxy to `app/`; running the same commands inside `app/` works too.
 
 ## Usage
 
@@ -142,7 +144,15 @@ cd app && npm run lint       # ESLint
 
 ## Deployment
 
-- Hosting target is Vercel from `app/`; `app/vercel.json` rewrites all routes to `/index.html` so `/editor`, `/about`, and `/contacts` work on refresh/deep links.
+- Vercel, SPA rewrite in `app/vercel.json` so `/editor`, `/about`, `/contacts`, and unknown routes resolve through `index.html` (which renders the 404 route). The same file adds immutable caching for hashed `/assets/*` and no-cache for `index.html`, plus `nosniff` / `Referrer-Policy` / `X-Frame-Options`.
+- Two supported setups:
+  - Set the Vercel **Root Directory** to `app` (uses `app/vercel.json`), or
+  - Leave the root at the repo (uses the root `vercel.json` install/build/output overrides).
+- Build locally with `npm run build` from the repo root (delegates to `app/`).
+- Set `VITE_CONTACT_EMAIL` in the Vercel project if the `/contacts` form should reach a real inbox (see `app/.env.example`).
+- Canonical/OG URLs in `app/index.html`, `public/robots.txt`, and `public/sitemap.xml` point at `https://svg-readme.vercel.app` — update them if the domain changes.
+- Node ≥ 22.12 (`.nvmrc`, `engines`); CI runs lint, typecheck, tests, and build on PRs and pushes to `main`.
+- Full step-by-step guide (both root layouts, env vars, smoke test, troubleshooting, rollback, alternate hosts): [`docs/deployment.md`](./docs/deployment.md).
 
 ## Roadmap
 

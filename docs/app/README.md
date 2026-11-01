@@ -1,75 +1,54 @@
-# React + TypeScript + Vite
+# App
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React 19 + TypeScript + Vite 8 frontend for svg-readme. This is the deployable
+unit: `app/` is the Vercel root directory (or the target of the root-level
+`vercel.json` build overrides).
 
-Currently, two official plugins are available:
+## Scripts
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+```bash
+npm ci                  # install (from app/)
+npm run dev             # Vite dev server
+npm run build           # tsc -b + vite build → dist/
+npm run preview         # serve dist/ locally
+npm run test            # Vitest (704 tests)
+npm run lint            # ESLint
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Layout
 
 ```
+src/
+  pages/landing/      Home (Quick Studio), About, Contacts + components/lib
+  pages/editor/       EditorInner and its hooks
+  pages/NotFound.tsx  404 fallback route
+  components/         TopNav, TopToolbar, editor canvas/sidebar/right bar, UI
+  layouts/            LandingLayout, EditorLayout
+  lib/                export, design file, geometry, templates, SVG import
+  assets/fonts/woff2/ Poppins + JetBrains Mono (only the weights used)
+  __tests__/          Vitest suites
+public/               logo, robots.txt, sitemap.xml
+```
+
+## Build notes
+
+- `/editor` is lazy-loaded, so the landing page does not ship the editor bundle.
+- Fonts are WOFF2 only (7 faces). `lib/fontEmbed.ts` reuses the same files to
+  embed `@font-face` data URLs into PNG/GIF exports.
+- `vercel.json` adds the SPA rewrite plus cache/security headers. The root
+  `vercel.json` mirrors the build settings for deployments rooted at the repo.
+
+## Environment
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `VITE_CONTACT_EMAIL` | Inbox behind the `/contacts` mailto form | `hello@example.com` |
+
+Copy `.env.example` to `.env.local` before deploying if you want the contact
+form to reach a real inbox.
+
+## Related docs
+
+- [Feature index](./index.md)
+- [Text tool](./text-tool.md) · [Move tool](./move-tool.md) · [Multi-select](./multi-select.md)
+- [Testing](./testing.md)

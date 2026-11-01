@@ -1,5 +1,8 @@
 import { useState } from "react";
 
+/** Set VITE_CONTACT_EMAIL at build time; falls back to a clearly-placeholder inbox. */
+const CONTACT_EMAIL = import.meta.env.VITE_CONTACT_EMAIL ?? "hello@example.com";
+
 export default function Contacts() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -10,7 +13,7 @@ export default function Contacts() {
     e.preventDefault();
     const subject = encodeURIComponent(`svg-readme contact from ${name || "someone"}`);
     const body = encodeURIComponent(`${message}\n\n— ${name} (${email})`);
-    window.location.href = `mailto:hello@example.com?subject=${subject}&body=${body}`;
+    window.location.href = `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`;
     setToast("Opening your mail app…");
   };
 
