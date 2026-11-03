@@ -1,6 +1,7 @@
 import type { ShapeElementProperties, ImageElementProperties, PathElementProperties } from "../../components/editor-canvas/ElementsRenderer";
 import { isGradient, gradientUrl } from "../editor/gradient";
 import { pointsToSvgD } from "../editor/pathUtils";
+import { rectEllipseNodes, svgNodeToString } from "./visualEffects";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -59,13 +60,17 @@ export function renderShapeToSvgString(props: ShapeElementProperties, layerId?: 
   const opacityAttr = opacity !== 1 ? ` opacity="${opacity}"` : "";
 
   let el = "";
-  if (kind === "rect") {
-    const rx = cornerRadius ?? 4;
-    el = `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${fillValue}"${strokeAttr}${opacityAttr} rx="${rx}"/>`;
-  } else if (kind === "circle") {
-    const rx = width / 2;
-    const ry = height / 2;
-    el = `<ellipse cx="${x + rx}" cy="${y + ry}" rx="${rx}" ry="${ry}" fill="${fillValue}"${strokeAttr}${opacityAttr}/>`;
+  // Rect / ellipse honour independent corner radii + stroke position
+  // (cornerRadius default shared via DEFAULT_RECT_CORNER_RADIUS).
+  const rectNodes = kind === "rect" || kind === "circle" ? rectEllipseNodes({ ...props, cornerRadius }, fillValue as string) : null;
+  if (rectNodes) {
+    if (rectNodes.length === 1) {
+      const node = rectNodes[0];
+      if (opacity !== 1) node.attrs.opacity = opacity;
+      el = svgNodeToString(node);
+    } else {
+      el = `<g${opacityAttr}>${rectNodes.map(svgNodeToString).join("")}</g>`;
+    }
   } else if (kind === "triangle") {
     el = `<path d="${trianglePath(x, y, width, height)}" fill="${fillValue}"${strokeAttr}${opacityAttr}/>`;
   } else if (kind === "star") {
@@ -75,7 +80,7 @@ export function renderShapeToSvgString(props: ShapeElementProperties, layerId?: 
   } else if (kind === "line") {
     const midY = y + height / 2;
     const lineStroke = stroke || fillValue;
-    el = `<line x1="${x}" y1="${midY}" x2="${x + width}" y2="${midY}" stroke="${lineStroke}" stroke-width="${Math.max(strokeWidth, 2)}" stroke-linecap="${cap}"${opacityAttr}/>`;
+    el = `<line x1="${x}" y1="${midY}" x2="${x + width}" y2="${midY}" stroke="${lineStroke}" stroke-width="${Math.max(strokeWidth, 2)}" stroke-linecap="${cap}"${dashAttr}${opacityAttr}/>`;
   }
 
   if (!el) return "";
@@ -129,7 +134,8 @@ export function renderPathToSvgString(props: PathElementProperties): string {
   const opacityAttr = opacity !== 1 ? ` opacity="${opacity}"` : "";
   const d = pointsToSvgD(points, closed, props.handles, subpaths);
   const fillAttr = closed ? ` fill="${fill}"` : ` fill="none"`;
-  const el = `<path d="${d}"${fillAttr} stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round"${opacityAttr}/>`;
+  const pathDash = props.strokeDashArray ? ` stroke-dasharray="${props.strokeDashArray}"` : "";
+  const el = `<path d="${d}"${fillAttr} stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="${props.strokeLinecap ?? "round"}" stroke-linejoin="${props.strokeLinejoin ?? "round"}"${pathDash}${opacityAttr}/>`;
 
   if (rotation) {
     const cx = x + width / 2;

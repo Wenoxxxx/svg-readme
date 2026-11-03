@@ -42,7 +42,7 @@ export function buildGradientDef(
   gradient: GradientFill,
   _bbox?: { x: number; y: number; width: number; height: number },
 ): string {
-  const stops = gradient.stops
+  const stops = sortGradientStops(gradient.stops)
     .map(
       (s) =>
         `        <stop offset="${(s.offset * 100).toFixed(0)}%" stop-color="${s.color}"/>`,
@@ -60,6 +60,29 @@ export function buildGradientDef(
   const y2 = `${((1 + Math.sin(angleRad)) / 2 * 100).toFixed(0)}%`;
 
   return `      <linearGradient id="${id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">\n${stops}\n      </linearGradient>`;
+}
+
+/**
+ * CSS background preview that matches the exported SVG gradient.
+ * Export angle 0 = left→right (SVG x1/x2); CSS `0deg` points bottom→top,
+ * so the CSS angle is the export angle + 90°.
+ */
+export function gradientToCss(gradient: GradientFill): string {
+  const stops = sortGradientStops(gradient.stops)
+    .map((s) => `${s.color} ${Math.round(s.offset * 1000) / 10}%`)
+    .join(", ");
+  if (gradient.type === "radial") {
+    return `radial-gradient(circle at ${gradient.cx * 100}% ${gradient.cy * 100}%, ${stops})`;
+  }
+  return `linear-gradient(${(((gradient.angle + 90) % 360) + 360) % 360}deg, ${stops})`;
+}
+
+/** Stops sorted by offset (stable for equal offsets). */
+export function sortGradientStops<T extends GradientStop>(stops: T[]): T[] {
+  return stops
+    .map((s, i) => ({ s, i }))
+    .sort((a, b) => a.s.offset - b.s.offset || a.i - b.i)
+    .map(({ s }) => s);
 }
 
 /** Default gradient presets for quick selection. */

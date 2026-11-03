@@ -45,6 +45,51 @@ export function normalizeHex(s: string): string | null {
   return `#${h}`;
 }
 
+/** Strict inspector hex validation: #rgb, #rrggbb or #rrggbbaa (leading # required). */
+export function isStrictHex(s: string): boolean {
+  return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(s.trim());
+}
+
+/** Normalize a strict hex; returns null when invalid. Keeps the alpha byte. */
+export function parseStrictHex(s: string): string | null {
+  const t = s.trim();
+  return isStrictHex(t) ? normalizeHex(t)!.toLowerCase() : null;
+}
+
+/** Replace `hex`'s RGB with `next`'s RGB while keeping `hex`'s alpha
+ *  (used by preset swatches so picking a swatch preserves transparency). */
+export function keepAlpha(current: string, next: string): string {
+  const n = normalizeHex(next);
+  if (!n) return next;
+  const { a } = hexToRgba(current);
+  const { r, g, b } = hexToRgba(n);
+  return rgbToHex(r, g, b, a);
+}
+
+/** Unique solid colors used across a document (fills, strokes, text, effects). */
+export function collectDocumentColors(
+  elementProperties: Record<string, unknown>,
+  limit = 16,
+): string[] {
+  const seen = new Set<string>();
+  const add = (c: unknown) => {
+    if (typeof c !== "string") return;
+    const n = normalizeHex(c.trim());
+    if (n) seen.add(n.toLowerCase());
+  };
+  for (const p of Object.values(elementProperties)) {
+    if (!p || typeof p !== "object") continue;
+    const o = p as Record<string, unknown>;
+    add(o.fill); add(o.stroke); add(o.color); add(o.backgroundColor);
+    if (o.fill && typeof o.fill === "object" && Array.isArray((o.fill as { stops?: unknown }).stops)) {
+      for (const s of (o.fill as { stops: { color?: unknown }[] }).stops) add(s.color);
+    }
+    if (Array.isArray(o.effects)) for (const e of o.effects as { color?: unknown }[]) add(e.color);
+    if (seen.size >= limit) break;
+  }
+  return [...seen].slice(0, limit);
+}
+
 // ─── RGB conversion helpers ───────────────────────────────────────────────────
 
 export function hexToRgba(hex: string): RGBA {

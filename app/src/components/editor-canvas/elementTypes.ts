@@ -1,9 +1,45 @@
 import type { PathVertexHandle } from "../../lib/editor/pathUtils";
 import type { AnimationConfig } from "./animationPresets";
 
+// ─── Shared visual props (Figma-style) ────────────────────────────────────────
+
+/** Layer effect kinds — rendered as SVG <filter> primitives on canvas and in export. */
+export type EffectType = "drop-shadow" | "inner-shadow" | "layer-blur";
+
+export interface LayerEffect {
+  /** Stable id (list key + edit target). */
+  id: string;
+  type: EffectType;
+  visible: boolean;
+  /** Shadow offset (ignored by layer-blur). */
+  x: number;
+  y: number;
+  /** Blur radius in px (Figma semantics: ≈ 2 × stdDeviation). */
+  blur: number;
+  /** Shadow spread in px (dilate/erode of the alpha). */
+  spread?: number;
+  /** Shadow color, #rrggbb or #rrggbbaa (alpha honoured). */
+  color: string;
+}
+
+export type BlendMode =
+  | "normal" | "multiply" | "screen" | "overlay" | "darken" | "lighten"
+  | "color-dodge" | "color-burn" | "hard-light" | "soft-light" | "difference"
+  | "exclusion" | "hue" | "saturation" | "color" | "luminosity";
+
+export type StrokePosition = "center" | "inside" | "outside";
+
+/** Optional Figma-style appearance props shared by every element type. */
+export interface VisualEffectProps {
+  /** Effects stack (drop shadow, inner shadow, layer blur). */
+  effects?: LayerEffect[];
+  /** CSS mix-blend-mode. Undefined / "normal" = no blending. */
+  blendMode?: BlendMode;
+}
+
 // ─── Element Property Types ───────────────────────────────────────────────────
 
-export interface TextElementProperties {
+export interface TextElementProperties extends VisualEffectProps {
   type: "text";
   x: number;
   y: number;
@@ -40,13 +76,15 @@ export interface TextElementProperties {
   flipH?: boolean;
   /** Flip vertically (mirror across X axis). */
   flipV?: boolean;
+  /** Layer opacity 0–1 (undefined = 1). */
+  opacity?: number;
   /** CSS animation applied to this text element. Embedded as @keyframes in exported SVG. */
   animation?: AnimationConfig;
 }
 
 export type ShapeKind = "rect" | "circle" | "triangle" | "star" | "hexagon" | "line";
 
-export interface ShapeElementProperties {
+export interface ShapeElementProperties extends VisualEffectProps {
   type: "shape";
   kind: ShapeKind;
   x: number;
@@ -62,6 +100,11 @@ export interface ShapeElementProperties {
   strokeDashArray?: string;
   /** Corner radius for rect shapes. Defaults to 4 when unset. 0 = sharp corners. */
   cornerRadius?: number;
+  /** Independent corner radii [top-left, top-right, bottom-right, bottom-left].
+   *  When set it overrides cornerRadius (rect only). */
+  cornerRadii?: [number, number, number, number];
+  /** Stroke alignment relative to the outline (rect / circle). Defaults to center. */
+  strokePosition?: StrokePosition;
   opacity: number;
   /** Rotation in degrees around the shape's own center (0–360). */
   rotation?: number;
@@ -73,7 +116,7 @@ export interface ShapeElementProperties {
   animation?: AnimationConfig;
 }
 
-export interface ImageElementProperties {
+export interface ImageElementProperties extends VisualEffectProps {
   type: "image";
   x: number;
   y: number;
@@ -92,7 +135,7 @@ export interface ImageElementProperties {
   animation?: AnimationConfig;
 }
 
-export interface PathElementProperties {
+export interface PathElementProperties extends VisualEffectProps {
   type: "path";
   /** Bounding-box x (min x of all points) */
   x: number;
@@ -113,6 +156,12 @@ export interface PathElementProperties {
   subpaths?: [number, number][][];
   stroke: string;
   strokeWidth: number;
+  /** Stroke cap (default round). */
+  strokeLinecap?: "butt" | "round" | "square";
+  /** Stroke join (default round). */
+  strokeLinejoin?: "miter" | "round" | "bevel";
+  /** Stroke dash array, e.g. "6 3". */
+  strokeDashArray?: string;
   fill: string;
   opacity: number;
   /** Whether the path should be closed (connect last point back to first). */
