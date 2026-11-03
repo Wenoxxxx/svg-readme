@@ -17,6 +17,9 @@ interface EditorRightBarProps {
   onUpdateProperties?: (id: string, updates: Partial<import("../../editor-canvas/ElementsRenderer").ElementProperties>) => void;
   /** Bulk-edit action applied to ALL currently selected layers (B10 multi-edit). */
   onBulkUpdateProperties?: (updates: Partial<import("../../editor-canvas/ElementsRenderer").ElementProperties>) => void;
+  onUpdateMany?: (updates: Record<string, Partial<import("../../editor-canvas/ElementsRenderer").ElementProperties>>) => void;
+  /** Coalesced undo checkpoint (same key within 1s merges) — used by the Animate tab. */
+  onCheckpoint?: (key: string) => void;
   onPropertiesStart?: () => void;
   /** Fired before a canvas (frame) resize so the change lands in undo history. */
   onCanvasResizeStart?: () => void;
@@ -35,6 +38,8 @@ export default function EditorRightBar({
   elementProperties,
   onUpdateProperties,
   onBulkUpdateProperties,
+  onUpdateMany,
+  onCheckpoint,
   onPropertiesStart,
   onCanvasResizeStart,
   onMoveElement,
@@ -126,6 +131,7 @@ export default function EditorRightBar({
             selectedProps={selectedProps}
             onUpdateProperties={onUpdateProperties}
             onBulkUpdateProperties={onBulkUpdateProperties}
+            onUpdateMany={onUpdateMany}
             onPropertiesStart={onPropertiesStart}
             onCanvasResizeStart={onCanvasResizeStart}
             onMoveElement={onMoveElement}
@@ -136,7 +142,7 @@ export default function EditorRightBar({
             frameSize={frameSize}
           />
         )}
-        {activeTab === "animate" && <AnimateTab />}
+        {activeTab === "animate" && <AnimateTab onCheckpoint={onCheckpoint} />}
         {activeTab === "export" && (
           <ExportTab
             onExport={onExport}

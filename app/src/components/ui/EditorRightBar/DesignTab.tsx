@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import {
   FlipHorizontal,
   FlipVertical,
@@ -7,16 +8,21 @@ import {
   Square as SquareIcon,
   Image as ImageIcon,
   LineSegment as LineIcon,
+  LinkSimple,
+  LinkBreak,
 } from "@phosphor-icons/react";
 import type { ElementProperties } from "../../editor-canvas/ElementsRenderer";
+import { getElementBoundingBox } from "../../editor-canvas/ElementsRenderer";
 import { useEditor } from "../../../context/EditorContext";
-import { PropInput } from "./helpers";
+import { collectDocumentColors } from "../../../lib/color";
 import CanvasSettingsPanel from "./CanvasSettingsPanel";
 import AlignmentControls from "./AlignmentControls";
 import MultiEditControls from "./MultiEditControls";
 import GroupBoundsPanel from "./GroupBoundsPanel";
 import { DesignTabText } from "./DesignTabText";
-import { DesignTabShape } from "./DesignTabShape";
+import { DesignTabShape, StrokeStyleControls } from "./DesignTabShape";
+import { NumberField } from "./NumberField";
+import { ColorField, DocumentColorsContext, EffectsSection, LayerSection, Section } from "./InspectorControls";
 
 // ─── Design Tab ───────────────────────────────────────────────────────────────
 
@@ -25,6 +31,8 @@ interface DesignTabProps {
   selectedProps: ElementProperties | null;
   onUpdateProperties?: (id: string, updates: Partial<ElementProperties>) => void;
   onBulkUpdateProperties?: (updates: Partial<ElementProperties>) => void;
+  /** Per-layer bulk update (multi-select geometry edits). */
+  onUpdateMany?: (updates: Record<string, Partial<ElementProperties>>) => void;
   onPropertiesStart?: () => void;
   /** Fired before a canvas (frame) resize so the change lands in undo history. */
   onCanvasResizeStart?: () => void;
@@ -37,11 +45,30 @@ interface DesignTabProps {
   frameSize?: { width: number; height: number };
 }
 
+/** Ids of every descendant layer that carries element properties. */
+function descendantElementIds(
+  groupId: string,
+  layers: { id: string; parentId?: string | null }[],
+  allElementProperties: Record<string, ElementProperties>,
+): string[] {
+  const out: string[] = [];
+  const walk = (pid: string) => {
+    for (const l of layers) {
+      if (l.parentId !== pid) continue;
+      if (allElementProperties[l.id]) out.push(l.id);
+      walk(l.id);
+    }
+  };
+  walk(groupId);
+  return out;
+}
+
 function DesignTab({
   selectedId,
   selectedProps,
   onUpdateProperties,
   onBulkUpdateProperties,
+  onUpdateMany,
   onPropertiesStart,
   onCanvasResizeStart,
   onMoveElement,
@@ -52,6 +79,11 @@ function DesignTab({
   frameSize,
 }: DesignTabProps) {
   const { layers } = useEditor();
+  const [lockRatio, setLockRatio] = useState(false);
+  const documentColors = useMemo(
+    () => collectDocumentColors(allElementProperties ?? {}),
+    [allElementProperties],
+  );
 
   // Shared alignment target: the frame when a single layer is selected (so it
   // can be aligned to the canvas), or null for multi-selection (selection-relative).
@@ -59,9 +91,13 @@ function DesignTab({
     ? { x: 0, y: 0, width: frameSize.width, height: frameSize.height }
     : null;
 
+  const provide = (node: React.ReactNode) => (
+    <DocumentColorsContext.Provider value={documentColors}>{node}</DocumentColorsContext.Provider>
+  );
+
   if (multiSelectCount > 1) {
     const ids = allSelectedLayerIds?.filter((id) => allElementProperties?.[id]) ?? [];
-    return (
+    return provide(
       <div className="p-5 flex flex-col gap-5">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-zinc-800 border border-white/5 flex items-center justify-center">
@@ -76,6 +112,7 @@ function DesignTab({
           ids={ids}
           allElementProperties={allElementProperties ?? {}}
           onBulkUpdateProperties={onBulkUpdateProperties}
+          onUpdateMany={onUpdateMany}
           onPropertiesStart={onPropertiesStart}
         />
         {allElementProperties && onMoveElement && (
@@ -86,7 +123,7 @@ function DesignTab({
             onAlignmentStart={onAlignmentStart}
           />
         )}
-      </div>
+      </div>,
     );
   }
 
@@ -95,8 +132,31 @@ function DesignTab({
     const selectedLayer = layers?.find((l) => l.id === selectedId);
     if (selectedLayer && selectedLayer.type === "group") {
       const childCount = layers?.filter((l) => l.parentId === selectedLayer.id).length ?? 0;
-      const groupIds = allSelectedLayerIds?.filter((id) => allElementProperties?.[id]) ?? [];
-      return (
+      // Groups carry no geometry of their own: align/move every descendant
+      // element so the group moves as a unit.
+      const groupIds = allElementProperties
+        ? descendantElementIds(selectedLayer.id, layers ?? [], allElementProperties)
+        : [];
+      const groupMove =
+        onMoveElement && allElementProperties && groupIds.length > 0
+          ? (_id: string, x: number, y: number) => {
+              // The alignment helper passes the group's virtual item id; move
+              // all descendants by the same delta.
+              const box = groupBounds(groupIds, allElementProperties);
+              const dx = x - box.x;
+              const dy = y - box.y;
+              if (dx === 0 && dy === 0) return;
+              for (const id of groupIds) {
+                const p = allElementProperties[id];
+                onMoveElement(id, p.x + dx, p.y + dy);
+              }
+            }
+          : undefined;
+      const groupProps: Record<string, ElementProperties> | null =
+        allElementProperties && groupIds.length > 0
+          ? { [selectedLayer.id]: virtualGroupRect(groupIds, allElementProperties) }
+          : null;
+      return provide(
         <div className="p-5 flex flex-col gap-5">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center">
@@ -116,16 +176,16 @@ function DesignTab({
               allElementProperties={allElementProperties}
             />
           )}
-          {allElementProperties && onMoveElement && (
+          {groupProps && groupMove && (
             <AlignmentControls
-              ids={groupIds}
-              allElementProperties={allElementProperties}
-              onMoveElement={onMoveElement}
+              ids={[selectedLayer.id]}
+              allElementProperties={groupProps}
+              onMoveElement={groupMove}
               onAlignmentStart={onAlignmentStart}
               frameBounds={frameBounds}
             />
           )}
-        </div>
+        </div>,
       );
     }
 
@@ -170,105 +230,87 @@ function DesignTab({
   );
 
   // ── Common Layout Section (all types have x, y, width, height) ────────
+  const box = getElementBoundingBox(selectedProps);
+  const curW = typeof selectedProps.width === "number" ? selectedProps.width : box.width;
+  const curH = selectedProps.height;
+  const isText = selectedProps.type === "text";
+  const textMode = isText ? (selectedProps.textAutoResize ?? "WIDTH_AND_HEIGHT") : null;
+
+  const commitWidth = (w: number) => {
+    if (w <= 0) return;
+    const u: Record<string, unknown> = { width: w };
+    if (lockRatio && curW > 0) u.height = Math.round((curH * w) / curW * 100) / 100;
+    // Typing a width on auto-width text fixes the width (Figma: → auto height).
+    if (isText && (selectedProps.width === "auto" || textMode === "WIDTH_AND_HEIGHT")) {
+      u.textAutoResize = "HEIGHT";
+    }
+    if (isText && u.height !== undefined) u.textAutoResize = "NONE";
+    update(u as Partial<ElementProperties>);
+  };
+  const commitHeight = (h: number) => {
+    if (h <= 0) return;
+    const u: Record<string, unknown> = { height: h };
+    if (lockRatio && curH > 0) u.width = Math.round((curW * h) / curH * 100) / 100;
+    if (isText && textMode !== "NONE") u.textAutoResize = "NONE";
+    update(u as Partial<ElementProperties>);
+  };
+
   const layoutSection = (
-    <div className="p-5 border-b border-white/5">
-      <div className="text-[11px] font-[JetBrains_Mono] text-zinc-500 uppercase tracking-wider mb-3 font-semibold">
-        Layout
-      </div>
+    <Section title="Layout">
       <div className="grid grid-cols-2 gap-2 mb-2">
-        <PropInput
-          label="X"
-          value={String(Math.round(selectedProps.x))}
-          type="number"
-          onFocus={onPropertiesStart}
-          onChange={(v) => update({ x: Number(v) || 0 })}
-        />
-        <PropInput
-          label="Y"
-          value={String(Math.round(selectedProps.y))}
-          type="number"
-          onFocus={onPropertiesStart}
-          onChange={(v) => update({ y: Number(v) || 0 })}
-        />
+        <NumberField label="X" value={selectedProps.x} onCommit={(v) => update({ x: v })} onScrubStart={onPropertiesStart} />
+        <NumberField label="Y" value={selectedProps.y} onCommit={(v) => update({ y: v })} onScrubStart={onPropertiesStart} />
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        <PropInput
-          label="W"
-          value={String(
-            typeof selectedProps.width === "number"
-              ? Math.round(selectedProps.width)
-              : selectedProps.width,
-          )}
-          type={typeof selectedProps.width === "number" ? "number" : "text"}
-          onFocus={onPropertiesStart}
-          onChange={(v) => {
-            const parsed = Number(v);
-            if (!isNaN(parsed) && parsed > 0)
-              update({ width: parsed } as Partial<ElementProperties>);
-          }}
-        />
-        <PropInput
-          label="H"
-          value={String(Math.round(selectedProps.height))}
-          type="number"
-          onFocus={onPropertiesStart}
-          onChange={(v) => {
-            const parsed = Number(v);
-            if (!isNaN(parsed) && parsed > 0) update({ height: parsed });
-          }}
-        />
+      <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
+        <NumberField label="W" value={curW} min={1} onCommit={commitWidth} onScrubStart={onPropertiesStart} />
+        <NumberField label="H" value={curH} min={1} onCommit={commitHeight} onScrubStart={onPropertiesStart} />
+        <button
+          type="button"
+          aria-label="Constrain proportions"
+          aria-pressed={lockRatio}
+          title={lockRatio ? "Proportions locked" : "Constrain proportions"}
+          onClick={() => setLockRatio((v) => !v)}
+          className={`p-1.5 rounded ${lockRatio ? "text-blue-400 bg-blue-600/20" : "text-zinc-500 hover:text-zinc-200 hover:bg-white/5"}`}
+        >
+          {lockRatio ? <LinkSimple className="w-4 h-4" /> : <LinkBreak className="w-4 h-4" />}
+        </button>
       </div>
-    </div>
+    </Section>
   );
 
-  // ── Rotation / Opacity Section (shapes & images) ──────────────────────
+  // ── Rotation / Flip Section (shapes, images, paths) ───────────────────
+  const canFlip = selectedProps.type === "shape" || selectedProps.type === "image";
   const transformSection =
     selectedProps.type === "shape" || selectedProps.type === "image" || selectedProps.type === "path" ? (
-      <div className="p-5 border-b border-white/5">
-        <div className="text-[11px] font-[JetBrains_Mono] text-zinc-500 uppercase tracking-wider mb-3 font-semibold">
-          Transform
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <PropInput
-            label="R°"
-            value={String(Math.round(selectedProps.rotation ?? 0))}
-            type="number"
-            onFocus={onPropertiesStart}
-            onChange={(v) => update({ rotation: Number(v) || 0 })}
-          />
-          <PropInput
-            label="Op"
-            value={String(selectedProps.opacity)}
-            type="number"
-            onFocus={onPropertiesStart}
-            onChange={(v) => {
-              const parsed = Number(v);
-              if (!isNaN(parsed))
-                update({ opacity: Math.max(0, Math.min(1, parsed)) });
-            }}
-          />
-        </div>
-        {/* Flip controls */}
-        {(selectedProps.type === "shape" || selectedProps.type === "image") && (
+      <Section title="Transform">
+        <NumberField
+          label="R"
+          ariaLabel="Rotation"
+          suffix="°"
+          value={selectedProps.rotation ?? 0}
+          onCommit={(v) => update({ rotation: ((v % 360) + 360) % 360 })}
+          onScrubStart={onPropertiesStart}
+        />
+        {canFlip && (
           <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-white/5">
             <span className="text-[10px] text-zinc-500 font-mono mr-1">Flip</span>
             <button
+              type="button"
               onClick={() => update({ flipH: !selectedProps.flipH })}
+              aria-pressed={!!selectedProps.flipH}
               className={`p-1.5 rounded text-xs transition-colors ${
-                selectedProps.flipH
-                  ? "bg-blue-600/20 text-blue-400"
-                  : "text-zinc-500 hover:text-zinc-300 hover:bg-white/5"
+                selectedProps.flipH ? "bg-blue-600/20 text-blue-400" : "text-zinc-500 hover:text-zinc-300 hover:bg-white/5"
               }`}
               title="Flip Horizontal"
             >
               <FlipHorizontal className="w-4 h-4" />
             </button>
             <button
+              type="button"
               onClick={() => update({ flipV: !selectedProps.flipV })}
+              aria-pressed={!!selectedProps.flipV}
               className={`p-1.5 rounded text-xs transition-colors ${
-                selectedProps.flipV
-                  ? "bg-blue-600/20 text-blue-400"
-                  : "text-zinc-500 hover:text-zinc-300 hover:bg-white/5"
+                selectedProps.flipV ? "bg-blue-600/20 text-blue-400" : "text-zinc-500 hover:text-zinc-300 hover:bg-white/5"
               }`}
               title="Flip Vertical"
             >
@@ -276,15 +318,41 @@ function DesignTab({
             </button>
           </div>
         )}
-      </div>
+      </Section>
     ) : null;
+
+  // ── Layer (opacity %, blend) + Effects — every element type ───────────
+  const layerSection = (
+    <LayerSection
+      opacity={selectedProps.opacity}
+      blendMode={selectedProps.blendMode}
+      update={(u) => update(u as Partial<ElementProperties>)}
+    />
+  );
+  const effectsSection = (
+    <EffectsSection
+      effects={selectedProps.effects}
+      onChange={(effects) => update({ effects } as Partial<ElementProperties>)}
+    />
+  );
+
+  const alignment = (
+    <AlignmentControls
+      ids={allSelectedLayerIds?.filter((id) => allElementProperties?.[id]) ?? []}
+      allElementProperties={allElementProperties ?? {}}
+      onMoveElement={onMoveElement ?? (() => undefined)}
+      onAlignmentStart={onAlignmentStart}
+      frameBounds={frameBounds}
+    />
+  );
 
   // ── Type-specific sections ────────────────────────────────────────────
   if (selectedProps.type === "text") {
-    return (
+    return provide(
       <>
         {selectionHeader}
         {layoutSection}
+        {layerSection}
         <DesignTabText
           selectedProps={selectedProps}
           update={update}
@@ -295,17 +363,20 @@ function DesignTab({
           allSelectedLayerIds={allSelectedLayerIds}
           frameBounds={frameBounds}
         />
-      </>
+        {effectsSection}
+      </>,
     );
   }
 
   if (selectedProps.type === "shape") {
-    return (
+    return provide(
       <>
         {selectionHeader}
         {layoutSection}
         {transformSection}
+        {layerSection}
         <DesignTabShape
+          key={selectedId}
           selectedProps={selectedProps}
           update={update}
           onPropertiesStart={onPropertiesStart}
@@ -315,102 +386,91 @@ function DesignTab({
           allSelectedLayerIds={allSelectedLayerIds}
           frameBounds={frameBounds}
         />
-      </>
+        {effectsSection}
+      </>,
     );
   }
 
   if (selectedProps.type === "image") {
-    return (
+    return provide(
       <>
         {selectionHeader}
         {layoutSection}
         {transformSection}
-        <AlignmentControls
-          ids={allSelectedLayerIds?.filter((id) => allElementProperties?.[id]) ?? []}
-          allElementProperties={allElementProperties ?? {}}
-          onMoveElement={onMoveElement ?? (() => undefined)}
-          onAlignmentStart={onAlignmentStart}
-          frameBounds={frameBounds}
-        />
-        <div className="p-5 border-b border-white/5">
-          <div className="text-[11px] font-[JetBrains_Mono] text-zinc-500 uppercase tracking-wider mb-3 font-semibold">Image</div>
+        {layerSection}
+        {alignment}
+        {effectsSection}
+        <Section title="Image">
           <p className="text-xs text-zinc-500 leading-relaxed">Image content is embedded in the exported SVG.</p>
-        </div>
-      </>
+        </Section>
+      </>,
     );
   }
 
   if (selectedProps.type === "path") {
-    return (
+    return provide(
       <>
         {selectionHeader}
         {layoutSection}
         {transformSection}
-        <AlignmentControls
-          ids={allSelectedLayerIds?.filter((id) => allElementProperties?.[id]) ?? []}
-          allElementProperties={allElementProperties ?? {}}
-          onMoveElement={onMoveElement ?? (() => undefined)}
-          onAlignmentStart={onAlignmentStart}
-          frameBounds={frameBounds}
-        />
+        {layerSection}
+        {alignment}
 
-        {/* Stroke */}
-        <div className="p-5 border-b border-white/5">
-          <div className="text-[11px] font-[JetBrains_Mono] text-zinc-500 uppercase tracking-wider mb-3 font-semibold">
-            Stroke
+        <Section title="Stroke">
+          <div className="mb-2">
+            <ColorField value={selectedProps.stroke} fallback="#3b82f6" onChange={(hex) => update({ stroke: hex })} ariaLabel="Stroke color" />
           </div>
-          <div className="flex items-center gap-3 mb-2">
-            <input
-              type="color"
-              value={selectedProps.stroke || "#3b82f6"}
-              onChange={(e) => update({ stroke: e.target.value })}
-              className="w-8 h-8 rounded border border-white/10 cursor-pointer bg-transparent"
-            />
-            <input
-              type="text"
-              value={selectedProps.stroke}
-              onChange={(e) => update({ stroke: e.target.value })}
-              className="flex-1 bg-zinc-900 border border-white/5 rounded-md px-3 py-2 text-sm text-zinc-300 outline-none focus:border-blue-500/50 transition-all font-mono"
-            />
-          </div>
-          <PropInput
+          <NumberField
             label="Wt"
-            value={String(selectedProps.strokeWidth)}
-            type="number"
-            onFocus={onPropertiesStart}
-            onChange={(v) => {
-              const parsed = Number(v);
-              if (!isNaN(parsed) && parsed >= 0)
-                update({ strokeWidth: parsed });
-            }}
+            ariaLabel="Stroke width"
+            value={selectedProps.strokeWidth}
+            min={0}
+            onCommit={(v) => update({ strokeWidth: v })}
           />
-        </div>
+          <StrokeStyleControls
+            strokeDashArray={selectedProps.strokeDashArray}
+            strokeLinecap={selectedProps.strokeLinecap}
+            strokeLinejoin={selectedProps.strokeLinejoin}
+            defaultCap="round"
+            defaultJoin="round"
+            update={(u) => update(u as Partial<ElementProperties>)}
+          />
+        </Section>
 
-        {/* Fill */}
-        <div className="p-5 border-b border-white/5">
-          <div className="text-[11px] font-[JetBrains_Mono] text-zinc-500 uppercase tracking-wider mb-3 font-semibold">
-            Fill
-          </div>
-          <div className="flex items-center gap-3">
-            <input
-              type="color"
-              value={selectedProps.fill}
-              onChange={(e) => update({ fill: e.target.value })}
-              className="w-8 h-8 rounded border border-white/10 cursor-pointer bg-transparent"
-            />
-            <input
-              type="text"
-              value={selectedProps.fill}
-              onChange={(e) => update({ fill: e.target.value })}
-              className="flex-1 bg-zinc-900 border border-white/5 rounded-md px-3 py-2 text-sm text-zinc-300 outline-none focus:border-blue-500/50 transition-all font-mono"
-            />
-          </div>
-        </div>
-      </>
+        <Section title="Fill">
+          <ColorField value={selectedProps.fill} onChange={(hex) => update({ fill: hex })} ariaLabel="Fill color" />
+          {!selectedProps.closed && (
+            <p className="mt-2 text-[10px] text-zinc-600">Fill applies to closed paths.</p>
+          )}
+        </Section>
+        {effectsSection}
+      </>,
     );
   }
 
   return null;
+}
+
+/** Union bounding box of a set of elements. */
+function groupBounds(ids: string[], all: Record<string, ElementProperties>) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const id of ids) {
+    const b = getElementBoundingBox(all[id]);
+    minX = Math.min(minX, b.x);
+    minY = Math.min(minY, b.y);
+    maxX = Math.max(maxX, b.x + b.width);
+    maxY = Math.max(maxY, b.y + b.height);
+  }
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+/** A rect standing in for a group so the alignment helper can treat it as one item. */
+function virtualGroupRect(ids: string[], all: Record<string, ElementProperties>): ElementProperties {
+  const b = groupBounds(ids, all);
+  return {
+    type: "shape", kind: "rect", x: b.x, y: b.y, width: b.width, height: b.height,
+    fill: "none", stroke: "", strokeWidth: 0, opacity: 1,
+  } as ElementProperties;
 }
 
 export default DesignTab;

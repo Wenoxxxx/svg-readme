@@ -74,31 +74,5 @@ function applyDistributeSpacing(
   });
 }
 
-function PropInput({
-  label,
-  value,
-  type = "text",
-  onChange,
-  onFocus,
-}: {
-  label: string;
-  value: string;
-  type?: string;
-  onChange: (value: string) => void;
-  onFocus?: () => void;
-}) {
-  return (
-    <div className="flex items-center gap-2 bg-zinc-900 border border-white/5 rounded-md px-3 py-2.5 focus-within:border-blue-500/50 focus-within:ring-1 focus-within:ring-blue-500/20 transition-all">
-      <span className="text-zinc-500 text-xs font-mono">{label}</span>
-      <input
-        type={type}
-        value={value}
-        onFocus={onFocus}
-        onChange={(e) => onChange(e.target.value)}
-        className="bg-transparent text-sm w-full outline-none text-zinc-300 focus:text-white"
-      />
-    </div>
-  );
-}
-
-export { applyAlignment, applyDistributeSpacing, PropInput };
+// Numeric inspector inputs live in ./NumberField (draft/commit, expressions, scrub).
+export { applyAlignment, applyDistributeSpacing };

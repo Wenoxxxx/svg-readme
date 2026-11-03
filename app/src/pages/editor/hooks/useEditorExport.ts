@@ -121,9 +121,9 @@ export function useEditorExport(data: ExportData) {
     const handleExportAnimated = (e: Event) => {
       const { fps, format } = (e as CustomEvent).detail as { fps: number; format: "gif" | "png-sequence" };
       const d = exportDataRef.current;
-      const dispatchProgress = (current: number, total: number) => {
+      const dispatchProgress = (current: number, total: number, error?: string) => {
         window.dispatchEvent(new CustomEvent("export-animated-progress", {
-          detail: { current, total },
+          detail: { current, total, error },
         }));
       };
       (async () => {
@@ -135,11 +135,12 @@ export function useEditorExport(data: ExportData) {
           );
           if (result.gifBlob) {
             downloadGif(result.gifBlob, "banner.gif");
-            dispatchProgress(1, 1);
           }
+          // Always signal completion so the UI never stays on "Rendering…".
+          dispatchProgress(1, 1);
         } catch (err) {
           console.error("Animated export failed:", err);
-          dispatchProgress(0, 0);
+          dispatchProgress(0, 0, err instanceof Error ? err.message : "Animated export failed");
         }
       })();
     };

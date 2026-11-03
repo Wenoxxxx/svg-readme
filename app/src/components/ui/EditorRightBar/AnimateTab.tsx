@@ -13,6 +13,7 @@ import type { ElementProperties, AnimationConfig } from "../../editor-canvas/Ele
 import { ANIMATION_PRESETS } from "../../editor-canvas/ElementsRenderer";
 import { generateEasingSvgPath, applyAnimationToLayers, applyStaggeredAnimation } from "../../../lib/editor/animationUtils";
 import TimelineEditor from "../TimelineEditor";
+import { moveKeyframeById } from "../../../lib/editor/timelineUtils";
 import { useEditor } from "../../../context/EditorContext";
 
 // ─── Animate Tab ──────────────────────────────────────────────────────────────
@@ -40,7 +41,16 @@ function EasingViz({ easing, w = 120, h = 48 }: { easing: string; w?: number; h?
   );
 }
 
-function AnimateTab() {
+interface AnimateTabProps {
+  /** Coalesced undo checkpoint: same key within 1s merges (slider drags). */
+  onCheckpoint?: (key: string) => void;
+}
+
+/** Unique key for discrete (non-coalescing) edits. */
+let discreteSeq = 0;
+const discreteKey = (base: string) => `${base}:#${++discreteSeq}`;
+
+function AnimateTab({ onCheckpoint }: AnimateTabProps = {}) {
   const {
     selectedLayerIds,
     elementProperties,
@@ -92,15 +102,16 @@ function AnimateTab() {
   }, 0);
 
   const updateProps = useCallback(
-    (updates: Partial<ElementProperties>) => {
+    (updates: Partial<ElementProperties>, checkpointKey?: string) => {
       if (!selectedId) return;
+      onCheckpoint?.(checkpointKey ?? discreteKey(`anim:${selectedId}`));
       setElementProperties((prev) => {
         const existing = prev[selectedId];
         if (!existing) return prev;
         return { ...prev, [selectedId]: { ...existing, ...updates } as ElementProperties };
       });
     },
-    [selectedId, setElementProperties],
+    [selectedId, setElementProperties, onCheckpoint],
   );
 
   const applyPreset = useCallback(
@@ -128,11 +139,13 @@ function AnimateTab() {
   const updateAnimField = useCallback(
     (field: keyof AnimationConfig, value: unknown) => {
       if (!activeAnim) return;
-      updateProps({
-        animation: { ...activeAnim, [field]: value } as AnimationConfig,
-      });
+      // Same field within 1s coalesces into one undo step (slider/typing).
+      updateProps(
+        { animation: { ...activeAnim, [field]: value } as AnimationConfig },
+        `anim:${selectedId}:${String(field)}`,
+      );
     },
-    [activeAnim, updateProps],
+    [activeAnim, updateProps, selectedId],
   );
 
   // Bulk-apply animation to ALL selected layers
@@ -149,11 +162,12 @@ function AnimateTab() {
         direction: preset.defaults.direction!,
         fillMode: preset.defaults.fillMode!,
       };
+      onCheckpoint?.(discreteKey("anim-bulk"));
       setElementProperties((prev) =>
         applyAnimationToLayers(selectedLayerIds, anim, prev),
       );
     },
-    [selectedLayerIds, setElementProperties],
+    [selectedLayerIds, setElementProperties, onCheckpoint],
   );
 
   // Stagger: apply animation to all selected layers with staggered delays
@@ -170,11 +184,12 @@ function AnimateTab() {
         direction: preset.defaults.direction!,
         fillMode: preset.defaults.fillMode!,
       };
+      onCheckpoint?.(discreteKey("anim-stagger"));
       setElementProperties((prev) =>
         applyStaggeredAnimation(selectedLayerIds, anim, 0, staggerStep, prev),
       );
     },
-    [selectedLayerIds, staggerStep, setElementProperties],
+    [selectedLayerIds, staggerStep, setElementProperties, onCheckpoint],
   );
 
   // Animation preview timer — auto-stops after the longest animation in the
@@ -445,11 +460,9 @@ function AnimateTab() {
               timelineWidth={228}
               onScrubDrag={(t) => setScrubTime(t)}
               onScrubEnd={() => setScrubTime(null)}
-              onKeyframeMove={(index, newPercent) => {
-                const kfs = [...(activeAnim.keyframes || [{ percent: 0 }, { percent: 100 }])];
-                kfs[index] = { ...kfs[index], percent: newPercent };
-                kfs.sort((a, b) => a.percent - b.percent);
-                updateAnimField("keyframes", kfs);
+              onKeyframeMove={(id, newPercent) => {
+                // Track by stable id: the list is re-sorted after each move.
+                updateAnimField("keyframes", moveKeyframeById(activeAnim, id, newPercent));
               }}
             />
           </div>

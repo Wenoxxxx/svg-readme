@@ -89,9 +89,11 @@ describe("Multi-select property editing (B10)", () => {
       </EditorProvider>,
     );
 
-    fireEvent.change(screen.getByLabelText("Bulk opacity"), {
-      target: { value: "0.5" },
-    });
+    // Opacity is shown as 0–100 % and commits on Enter / blur.
+    const input = screen.getByLabelText("Bulk opacity");
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "50" } });
+    fireEvent.keyDown(input, { key: "Enter" });
     expect(onBulkUpdateProperties).toHaveBeenCalledWith({ opacity: 0.5 });
   });
 
@@ -112,7 +114,7 @@ describe("Multi-select property editing (B10)", () => {
       </EditorProvider>,
     );
 
-    expect((screen.getByLabelText("Bulk opacity") as HTMLInputElement).value).toBe("0.25");
+    expect((screen.getByLabelText("Bulk opacity") as HTMLInputElement).value).toBe("25");
   });
 
   it("shows a mixed placeholder when layers disagree", () => {

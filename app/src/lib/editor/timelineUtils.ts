@@ -115,6 +115,33 @@ export function ensureKeyframes(
   ];
 }
 
+export type TimelineKeyframe = { percent: number; easing?: string; id: string };
+
+/** Keyframe markers with a stable `id` on every entry (assigned once, by
+ *  original position, for markers that lack one) so drags can track the
+ *  same marker even after the list is re-sorted. */
+export function keyframesWithIds(anim: AnimationConfig): TimelineKeyframe[] {
+  const used = new Set<string>();
+  return ensureKeyframes(anim).map((kf, i) => {
+    const existing = (kf as { id?: string }).id;
+    let id = existing && !used.has(existing) ? existing : `kf${i}`;
+    while (used.has(id)) id = `${id}_`;
+    used.add(id);
+    return { ...kf, id };
+  });
+}
+
+/** Move the marker with `id` to `percent`; returns the re-sorted list. */
+export function moveKeyframeById(
+  anim: AnimationConfig,
+  id: string,
+  percent: number,
+): TimelineKeyframe[] {
+  return keyframesWithIds(anim)
+    .map((kf) => (kf.id === id ? { ...kf, percent: Math.max(0, Math.min(100, percent)) } : kf))
+    .sort((a, b) => a.percent - b.percent);
+}
+
 /** Get keyframe percentages sorted ascending. */
 export function getSortedKeyframePercents(
   anim: AnimationConfig,

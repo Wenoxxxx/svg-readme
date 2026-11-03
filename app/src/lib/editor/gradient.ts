@@ -1,3 +1,5 @@
+import { escXml } from "../export/xml";
+
 /** Gradient color stop. */
 export interface GradientStop {
   offset: number; // 0–1
@@ -23,7 +25,8 @@ export type GradientFill = LinearGradient | RadialGradient;
 
 /** Generate a unique gradient ID for SVG <defs>. */
 export function gradientId(layerId: string): string {
-  return `grad-${layerId}`;
+  // Sanitised so the id is safe in XML attributes and url(#…) references.
+  return `grad-${String(layerId).replace(/[^a-zA-Z0-9_-]/g, "_")}`;
 }
 
 /** Check if a fill value is a gradient object vs a plain hex string. */
@@ -42,24 +45,47 @@ export function buildGradientDef(
   gradient: GradientFill,
   _bbox?: { x: number; y: number; width: number; height: number },
 ): string {
-  const stops = gradient.stops
+  const stops = sortGradientStops(gradient.stops)
     .map(
       (s) =>
-        `        <stop offset="${(s.offset * 100).toFixed(0)}%" stop-color="${s.color}"/>`,
+        `        <stop offset="${(Number(s.offset) * 100).toFixed(0)}%" stop-color="${escXml(String(s.color))}"/>`,
     )
     .join("\n");
 
   if (gradient.type === "radial") {
-    return `      <radialGradient id="${id}" cx="${gradient.cx}" cy="${gradient.cy}" r="0.7">\n${stops}\n      </radialGradient>`;
+    return `      <radialGradient id="${escXml(id)}" cx="${Number(gradient.cx)}" cy="${Number(gradient.cy)}" r="0.7">\n${stops}\n      </radialGradient>`;
   }
 
-  const angleRad = (gradient.angle * Math.PI) / 180;
+  const angleRad = (Number(gradient.angle) * Math.PI) / 180;
   const x1 = `${((1 - Math.cos(angleRad)) / 2 * 100).toFixed(0)}%`;
   const y1 = `${((1 - Math.sin(angleRad)) / 2 * 100).toFixed(0)}%`;
   const x2 = `${((1 + Math.cos(angleRad)) / 2 * 100).toFixed(0)}%`;
   const y2 = `${((1 + Math.sin(angleRad)) / 2 * 100).toFixed(0)}%`;
 
-  return `      <linearGradient id="${id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">\n${stops}\n      </linearGradient>`;
+  return `      <linearGradient id="${escXml(id)}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">\n${stops}\n      </linearGradient>`;
+}
+
+/**
+ * CSS background preview that matches the exported SVG gradient.
+ * Export angle 0 = left→right (SVG x1/x2); CSS `0deg` points bottom→top,
+ * so the CSS angle is the export angle + 90°.
+ */
+export function gradientToCss(gradient: GradientFill): string {
+  const stops = sortGradientStops(gradient.stops)
+    .map((s) => `${s.color} ${Math.round(s.offset * 1000) / 10}%`)
+    .join(", ");
+  if (gradient.type === "radial") {
+    return `radial-gradient(circle at ${gradient.cx * 100}% ${gradient.cy * 100}%, ${stops})`;
+  }
+  return `linear-gradient(${(((gradient.angle + 90) % 360) + 360) % 360}deg, ${stops})`;
+}
+
+/** Stops sorted by offset (stable for equal offsets). */
+export function sortGradientStops<T extends GradientStop>(stops: T[]): T[] {
+  return stops
+    .map((s, i) => ({ s, i }))
+    .sort((a, b) => a.s.offset - b.s.offset || a.i - b.i)
+    .map(({ s }) => s);
 }
 
 /** Default gradient presets for quick selection. */

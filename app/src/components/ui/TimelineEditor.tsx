@@ -4,7 +4,7 @@ import {
   timeToPixel,
   pixelToTime,
   generateTimeRulerTicks,
-  ensureKeyframes,
+  keyframesWithIds,
 } from "../../lib/editor/timelineUtils";
 
 interface TimelineEditorProps {
@@ -15,8 +15,8 @@ interface TimelineEditorProps {
   onScrubDrag?: (time: number) => void;
   /** Called when scrubbing ends (mouse up). */
   onScrubEnd?: () => void;
-  /** Called when a keyframe is moved to a new percent. */
-  onKeyframeMove?: (index: number, newPercent: number) => void;
+  /** Called when a keyframe (identified by its stable id) is moved to a new percent. */
+  onKeyframeMove?: (id: string, newPercent: number) => void;
 }
 
 const TRACK_HEIGHT = 48;
@@ -36,8 +36,12 @@ export default function TimelineEditor({
   onKeyframeMove,
 }: TimelineEditorProps) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const [dragging, setDragging] = useState<"playhead" | number | null>(null);
-  const keyframes = ensureKeyframes(anim);
+  // Keyframe drags track a stable id, not an index: the list is re-sorted on
+  // every move, so an index would jump to a different marker mid-drag.
+  const [dragging, setDragging] = useState<{ kind: "playhead" } | { kind: "kf"; id: string } | null>(null);
+  const keyframes = keyframesWithIds(anim);
+  const isDraggingKf = (id: string) => dragging?.kind === "kf" && dragging.id === id;
+  const isDraggingPlayhead = dragging?.kind === "playhead";
 
   // Compute pixel positions
   const playheadPx = timeToPixel(elapsed, anim.duration, timelineWidth);
@@ -57,16 +61,16 @@ export default function TimelineEditor({
     (e: React.MouseEvent) => {
       const px = getSvgX(e);
       const t = pixelToTime(px, anim.duration, timelineWidth);
-      setDragging("playhead");
+      setDragging({ kind: "playhead" });
       onScrubDrag?.(t);
     },
     [getSvgX, anim.duration, timelineWidth, onScrubDrag],
   );
 
   const handleKeyframeMouseDown = useCallback(
-    (e: React.MouseEvent, index: number) => {
+    (e: React.MouseEvent, id: string) => {
       e.stopPropagation();
-      setDragging(index);
+      setDragging({ kind: "kf", id });
     },
     [],
   );
@@ -74,7 +78,7 @@ export default function TimelineEditor({
   const handlePlayheadMouseDown = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      setDragging("playhead");
+      setDragging({ kind: "playhead" });
     },
     [],
   );
@@ -86,19 +90,19 @@ export default function TimelineEditor({
     const handleMove = (e: MouseEvent) => {
       const px = getSvgX(e);
 
-      if (dragging === "playhead") {
+      if (dragging.kind === "playhead") {
         const t = pixelToTime(px, anim.duration, timelineWidth);
         onScrubDrag?.(t);
-      } else if (typeof dragging === "number") {
+      } else {
         // Dragging a keyframe — compute new percent
         const t = pixelToTime(px, anim.duration, timelineWidth);
         const newPercent = Math.max(0, Math.min(100, Math.round((t / anim.duration) * 100)));
-        onKeyframeMove?.(dragging, newPercent);
+        onKeyframeMove?.(dragging.id, newPercent);
       }
     };
 
     const handleUp = () => {
-      if (dragging === "playhead") {
+      if (dragging.kind === "playhead") {
         onScrubEnd?.();
       }
       setDragging(null);
@@ -162,7 +166,7 @@ export default function TimelineEditor({
         })}
 
         {/* Keyframe diamonds */}
-        {keyframes.map((kf, i) => {
+        {keyframes.map((kf) => {
           const kfPx = TRACK_PADDING_X + timeToPixel(
             (kf.percent / 100) * anim.duration,
             anim.duration,
@@ -170,9 +174,10 @@ export default function TimelineEditor({
           );
           return (
             <g
-              key={i}
+              key={kf.id}
+              data-testid="timeline-keyframe"
               className="cursor-grab active:cursor-grabbing"
-              onMouseDown={(e) => handleKeyframeMouseDown(e, i)}
+              onMouseDown={(e) => handleKeyframeMouseDown(e, kf.id)}
             >
               {/* Hit area */}
               <rect
@@ -185,8 +190,8 @@ export default function TimelineEditor({
               {/* Diamond shape */}
               <polygon
                 points={`${kfPx},${RULER_HEIGHT + TRACK_HEIGHT / 2 - KF_DIAMOND_SIZE} ${kfPx + KF_DIAMOND_SIZE},${RULER_HEIGHT + TRACK_HEIGHT / 2} ${kfPx},${RULER_HEIGHT + TRACK_HEIGHT / 2 + KF_DIAMOND_SIZE} ${kfPx - KF_DIAMOND_SIZE},${RULER_HEIGHT + TRACK_HEIGHT / 2}`}
-                fill={dragging === i ? "#fbbf24" : "#3b82f6"}
-                stroke={dragging === i ? "#f59e0b" : "#2563eb"}
+                fill={isDraggingKf(kf.id) ? "#fbbf24" : "#3b82f6"}
+                stroke={isDraggingKf(kf.id) ? "#f59e0b" : "#2563eb"}
                 strokeWidth={1}
               />
               {/* Percent label below */}
@@ -223,13 +228,13 @@ export default function TimelineEditor({
             y1={RULER_HEIGHT - 2}
             x2={playheadPx + TRACK_PADDING_X}
             y2={TOTAL_HEIGHT - 6}
-            stroke={dragging === "playhead" ? "#fbbf24" : "#ef4444"}
-            strokeWidth={PLAYHEAD_WIDTH + (dragging === "playhead" ? 1 : 0)}
+            stroke={isDraggingPlayhead ? "#fbbf24" : "#ef4444"}
+            strokeWidth={PLAYHEAD_WIDTH + (isDraggingPlayhead ? 1 : 0)}
           />
           {/* Playhead triangle handle */}
           <polygon
             points={`${playheadPx + TRACK_PADDING_X - 5},${RULER_HEIGHT - 2} ${playheadPx + TRACK_PADDING_X + 5},${RULER_HEIGHT - 2} ${playheadPx + TRACK_PADDING_X},${RULER_HEIGHT + 2}`}
-            fill={dragging === "playhead" ? "#fbbf24" : "#ef4444"}
+            fill={isDraggingPlayhead ? "#fbbf24" : "#ef4444"}
           />
         </g>
 

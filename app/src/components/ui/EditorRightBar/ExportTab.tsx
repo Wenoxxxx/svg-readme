@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   DownloadSimple,
   Clipboard,
@@ -56,6 +56,20 @@ function ExportTab({
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportTotal, setExportTotal] = useState(0);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const watchdog = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Reset the busy state if no progress arrives for a while (e.g. the
+   *  exporter crashed before reporting), so the button never stays stuck. */
+  const armWatchdog = () => {
+    if (watchdog.current) clearTimeout(watchdog.current);
+    watchdog.current = setTimeout(() => {
+      setExporting(false);
+      setExportProgress(0);
+      setExportTotal(0);
+      setExportError("Export timed out — please try again.");
+    }, 30000);
+  };
+  useEffect(() => () => { if (watchdog.current) clearTimeout(watchdog.current); }, []);
   // Export options (A12/E) — previously hardcoded in export.ts
   const [backgroundColor, setBackgroundColor] = useState(DEFAULT_EXPORT_OPTIONS.backgroundColor);
   const [transparent, setTransparent] = useState(DEFAULT_EXPORT_OPTIONS.transparent);
@@ -78,10 +92,29 @@ function ExportTab({
   // Listen for animated export progress updates
   useEffect(() => {
     const handleProgress = (e: Event) => {
-      const { current, total } = (e as CustomEvent).detail;
+      const { current, total, error } = ((e as CustomEvent).detail ?? {}) as { current: number; total: number; error?: string };
       setExportProgress(current);
       setExportTotal(total);
+      if (error) {
+        if (watchdog.current) clearTimeout(watchdog.current);
+        setExporting(false);
+        setExportProgress(0);
+        setExportTotal(0);
+        setExportError(error);
+        return;
+      }
+      if (current < total) {
+        // Still rendering: push the watchdog out.
+        if (watchdog.current) clearTimeout(watchdog.current);
+        watchdog.current = setTimeout(() => {
+          setExporting(false);
+          setExportProgress(0);
+          setExportTotal(0);
+          setExportError("Export timed out — please try again.");
+        }, 30000);
+      }
       if (current >= total) {
+        if (watchdog.current) clearTimeout(watchdog.current);
         setTimeout(() => {
           setExporting(false);
           setExportProgress(0);
@@ -372,6 +405,8 @@ function ExportTab({
                   onClick={() => {
                     if (exporting) return;
                     setExporting(true);
+                    setExportError(null);
+                    armWatchdog();
                     setExportProgress(0);
                     window.dispatchEvent(new CustomEvent("export-animated", {
                       detail: { fps: animFps, format: animFormat },
@@ -401,6 +436,9 @@ function ExportTab({
                 </button>
 
                 {/* Progress bar */}
+                {exportError && !exporting && (
+                  <p role="alert" className="mt-2 text-xs text-red-400">{exportError}</p>
+                )}
                 {exporting && exportTotal > 0 && (
                   <div className="space-y-1">
                     <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">

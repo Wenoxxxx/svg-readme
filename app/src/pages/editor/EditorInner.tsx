@@ -574,6 +574,21 @@ export function EditorInner() {
     });
   }, [selectedLayerIds, checkpoint, setElementProperties]);
 
+  // ── Per-layer updates as one undo step (multi-select bounds, flips) ───────
+  const handleUpdateManyProperties = useCallback((updates: Record<string, Partial<ElementProperties>>) => {
+    const ids = Object.keys(updates);
+    if (ids.length === 0) return;
+    const keys = [...new Set(ids.flatMap((id) => Object.keys(updates[id])))].sort();
+    checkpoint(`many:${ids.sort().join(",")}:${keys.join(",")}`);
+    setElementProperties((prev) => {
+      const next = { ...prev };
+      for (const id of ids) {
+        if (next[id]) next[id] = { ...next[id], ...updates[id] } as ElementProperties;
+      }
+      return next;
+    });
+  }, [checkpoint, setElementProperties]);
+
   // ── Resize ────────────────────────────────────────────────────────────────
   const handleResizeElement = useCallback((id: string, x: number, y: number, width: number, height: number) => {
     setElementProperties((prev) => {
@@ -1046,6 +1061,8 @@ export function EditorInner() {
       elementProperties={elementProperties}
       onUpdateProperties={handleUpdateProperties}
       onBulkUpdateProperties={handleBulkUpdateProperties}
+      onUpdateMany={handleUpdateManyProperties}
+      onCheckpoint={checkpoint}
       onPropertiesStart={handlePropertiesStart}
       onCanvasResizeStart={handleCanvasResizeStart}
       onMoveElement={handleMoveElement}
