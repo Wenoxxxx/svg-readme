@@ -4,6 +4,7 @@ import type {
   ShapeElementProperties,
 } from "../../components/editor-canvas/elementTypes";
 import { hexToRgba, normalizeHex } from "../color";
+import { escXml, safeToken } from "./xml";
 
 // ─── Shared defaults ─────────────────────────────────────────────────────────
 
@@ -30,7 +31,7 @@ const fmt = (n: number) => String(Math.round(n * 1000) / 1000);
 /** Serialise an SvgNode tree to an SVG/XML string. */
 export function svgNodeToString(node: SvgNode): string {
   const attrs = Object.entries(node.attrs)
-    .map(([k, v]) => ` ${k}="${typeof v === "number" ? fmt(v) : String(v).replace(/"/g, "&quot;")}"`)
+    .map(([k, v]) => ` ${k}="${typeof v === "number" ? fmt(v) : escXml(String(v))}"`)
     .join("");
   if (!node.children || node.children.length === 0) return `<${node.tag}${attrs}/>`;
   return `<${node.tag}${attrs}>${node.children.map(svgNodeToString).join("")}</${node.tag}>`;
@@ -57,7 +58,7 @@ export function splitColorAlpha(color: string): { color: string; opacity: number
 
 /** Unique filter id per layer. */
 export function effectsFilterId(layerId: string): string {
-  return `fx-${layerId.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+  return `fx-${safeToken(layerId)}`;
 }
 
 export function hasVisibleEffects(effects: LayerEffect[] | undefined): boolean {

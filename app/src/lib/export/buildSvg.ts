@@ -7,6 +7,7 @@ import { getTextLines, getLineHeight, getTextBlockHeight, getTextBlockWidth } fr
 import type { LayerType } from "../../context/EditorContext";
 import { escXml, renderShapeToSvgString, renderImageToSvgString, renderPathToSvgString, trianglePath, starPath, hexagonPath } from "./shapes";
 import { pointsToSvgD } from "../editor/pathUtils";
+import { attr as a, safeToken, sanitizeStyleText, sanitizeCssValue } from "./xml";
 
 // ─── Build SVG string ────────────────────────────────────────────────────────
 
@@ -67,16 +68,16 @@ export function buildSvgString(options: BuildSvgOptions): string {
       const { kind, x, y, width, height } = props;
       const outline = shapeOutlineNode(props);
       if (outline) return svgNodeToString(outline);
-      if (kind === "triangle") return `<path d="${trianglePath(x, y, width, height)}"/>`;
-      if (kind === "star") return `<path d="${starPath(x, y, width, height)}"/>`;
-      if (kind === "hexagon") return `<path d="${hexagonPath(x, y, width, height)}"/>`;
+      if (kind === "triangle") return `<path d="${a(trianglePath(x, y, width, height))}"/>`;
+      if (kind === "star") return `<path d="${a(starPath(x, y, width, height))}"/>`;
+      if (kind === "hexagon") return `<path d="${a(hexagonPath(x, y, width, height))}"/>`;
       return ""; // lines have no area
     }
     if (props.type === "path") {
-      return `<path d="${pointsToSvgD(props.points, props.closed, props.handles, props.subpaths)}"/>`;
+      return `<path d="${a(pointsToSvgD(props.points, props.closed, props.handles, props.subpaths))}"/>`;
     }
     if (props.type === "text") {
-      return `<text x="${props.x}" y="${props.y + props.fontSize}" font-family="${props.fontFamily}" font-size="${props.fontSize}" font-weight="${props.fontWeight}">${escXml(props.content)}</text>`;
+      return `<text x="${a(props.x)}" y="${a(Number(props.y) + Number(props.fontSize))}" font-family="${a(props.fontFamily)}" font-size="${a(props.fontSize)}" font-weight="${a(props.fontWeight)}">${escXml(String(props.content))}</text>`;
     }
     return ""; // image masks unsupported
   }
@@ -99,13 +100,13 @@ export function buildSvgString(options: BuildSvgOptions): string {
         const rest = maskKidId ? kids.filter((k) => k !== maskKidId) : kids;
         if (maskKidId) {
           maskDefs.push(
-            `${pad}<clipPath id="mask-${id}">${maskClipShape(maskKidId)}</clipPath>`,
+            `${pad}<clipPath id="mask-${safeToken(id)}">${maskClipShape(maskKidId)}</clipPath>`,
           );
         }
         const content: string[] = [];
         if (maskKidId) {
           if (rest.length > 0) {
-            content.push(`${pad}  <g clip-path="url(#mask-${id})">`);
+            content.push(`${pad}  <g clip-path="url(#mask-${safeToken(id)})">`);
             content.push(...renderLayerList(rest, indent + 2));
             content.push(`${pad}  </g>`);
           }
@@ -115,7 +116,7 @@ export function buildSvgString(options: BuildSvgOptions): string {
           content.push(...renderLayerList(kids, indent + 1));
         }
         if (content.length > 0) {
-          result.push(`${pad}<g id="${id}">`);
+          result.push(`${pad}<g id="${a(id)}">`);
           result.push(...content);
           result.push(`${pad}</g>`);
         }
@@ -139,10 +140,10 @@ export function buildSvgString(options: BuildSvgOptions): string {
         }
         let out = body;
         if (fxAttrs) {
-          const attrStr = Object.entries(fxAttrs).map(([k, v]) => ` ${k}="${v}"`).join("");
+          const attrStr = Object.entries(fxAttrs).map(([k, v]) => ` ${k}="${a(v)}"`).join("");
           out = [`${pad}<g${attrStr}>`, ...out, `${pad}</g>`];
         }
-        if (anim) out = [`${pad}<g class="anim-${id}">`, ...out, `${pad}</g>`];
+        if (anim) out = [`${pad}<g class="anim-${safeToken(id)}">`, ...out, `${pad}</g>`];
         return out;
       };
 
@@ -162,7 +163,8 @@ export function buildSvgString(options: BuildSvgOptions): string {
         const size = props.fontSize;
         const weight = props.fontWeight;
         const italicAttr = props.italic ? ` font-style="italic"` : "";
-        const spacingAttr = props.letterSpacing ? ` letter-spacing="${props.letterSpacing}"` : "";
+        const fillA = a(fill);
+        const spacingAttr = props.letterSpacing ? ` letter-spacing="${a(props.letterSpacing)}"` : "";
 
         // Box dimensions measured through textMeasure so the exported box agrees
         // with the rendered text (A11).
@@ -187,11 +189,11 @@ export function buildSvgString(options: BuildSvgOptions): string {
         const lineAnchor =
           isAutoWidth || resize === "WIDTH_AND_HEIGHT" ? "start" : anchor;
 
-        textOut.push(`${pad}<g transform="translate(${props.x}, ${props.y})">`);
+        textOut.push(`${pad}<g transform="${a(`translate(${props.x}, ${props.y})`)}">`);
 
         if (props.backgroundColor) {
           textOut.push(
-            `${pad}  <rect x="0" y="0" width="${boxWidth}" height="${boxHeight}" fill="${props.backgroundColor}" rx="3"/>`,
+            `${pad}  <rect x="0" y="0" width="${a(boxWidth)}" height="${a(boxHeight)}" fill="${a(props.backgroundColor)}" rx="3"/>`,
           );
         }
 
@@ -203,7 +205,7 @@ export function buildSvgString(options: BuildSvgOptions): string {
               ? lineY + 2
               : lineY - size * 0.4;
           textOut.push(
-            `${pad}  <text x="${lineX}" y="${lineY}" font-family="${family}" font-size="${size}" font-weight="${weight}"${italicAttr}${spacingAttr} fill="${fill}" text-anchor="${lineAnchor}">${escXml(line.text)}</text>`,
+            `${pad}  <text x="${a(lineX)}" y="${a(lineY)}" font-family="${a(family)}" font-size="${a(size)}" font-weight="${a(weight)}"${italicAttr}${spacingAttr} fill="${fillA}" text-anchor="${a(lineAnchor)}">${escXml(String(line.text))}</text>`,
           );
           if (decoration !== "NONE" && line.text.length > 0) {
             const x1 =
@@ -217,7 +219,7 @@ export function buildSvgString(options: BuildSvgOptions): string {
                   ? lineX + line.width / 2
                   : lineX + line.width;
             textOut.push(
-              `${pad}  <line x1="${x1}" y1="${decorationY}" x2="${x2}" y2="${decorationY}" stroke="${fill}" stroke-width="${Math.max(1, size * 0.06)}"/>`,
+              `${pad}  <line x1="${a(x1)}" y1="${a(decorationY)}" x2="${a(x2)}" y2="${a(decorationY)}" stroke="${fillA}" stroke-width="${a(Math.max(1, size * 0.06))}"/>`,
             );
           }
         });
@@ -261,11 +263,12 @@ export function buildSvgString(options: BuildSvgOptions): string {
     const resolved = resolveLayerAnimation(layer.id, anim);
     if (resolved.keyframesCSS && !seenAnimNames.has(resolved.name)) {
       seenAnimNames.add(resolved.name);
-      animationKeyframesCSS.push(resolved.keyframesCSS);
+      // Custom keyframes are user/document data: never let them close <style>.
+      animationKeyframesCSS.push(sanitizeStyleText(resolved.keyframesCSS));
     }
     // transform-box/origin: scale/rotate presets pivot on the element centre.
     animationRulesCSS.push(
-      `  .anim-${layer.id} { animation: ${resolved.css}; transform-box: fill-box; transform-origin: center; }`,
+      `  .anim-${safeToken(layer.id)} { animation: ${sanitizeCssValue(resolved.css)}; transform-box: fill-box; transform-origin: center; }`,
     );
   }
 
@@ -276,7 +279,7 @@ export function buildSvgString(options: BuildSvgOptions): string {
       ? `\n  @media (prefers-reduced-motion: reduce) {\n    [class*="anim-"] { animation: none !important; }\n  }`
       : "";
 
-  const rx = rounded ? ` rx="${borderRadius}"` : "";
+  const rx = rounded ? ` rx="${a(borderRadius)}"` : "";
   const borderStroke = showBorder
     ? ` stroke="rgba(255,255,255,0.10)" stroke-width="1"`
     : "";
@@ -292,7 +295,7 @@ export function buildSvgString(options: BuildSvgOptions): string {
     .join("\n");
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<svg width="${a(w)}" height="${a(h)}" viewBox="0 0 ${a(w)} ${a(h)}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
   <defs>
     <style>
 ${styleBlock}
@@ -301,7 +304,7 @@ ${gradientDefs.join("\n")}
 ${maskDefs.join("\n")}
 ${filterDefs.join("\n")}
   </defs>
-  <rect x="0" y="0" width="${w}" height="${h}" fill="${backgroundColor}"${rx}${borderStroke}/>
+  <rect x="0" y="0" width="${a(w)}" height="${a(h)}" fill="${a(backgroundColor)}"${rx}${borderStroke}/>
 ${elementStrings.join("\n")}
 </svg>`;
 }

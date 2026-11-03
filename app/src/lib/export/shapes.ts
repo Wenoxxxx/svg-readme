@@ -2,16 +2,12 @@ import type { ShapeElementProperties, ImageElementProperties, PathElementPropert
 import { isGradient, gradientUrl } from "../editor/gradient";
 import { pointsToSvgD } from "../editor/pathUtils";
 import { rectEllipseNodes, svgNodeToString } from "./visualEffects";
+import { attr as a, escXml } from "./xml";
+
+export { escXml };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-export const escXml = (s: string) =>
-  s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
 
 // ─── Shape path helpers ───────────────────────────────────────────────────────
 
@@ -54,10 +50,10 @@ export function renderShapeToSvgString(props: ShapeElementProperties, layerId?: 
   const fillValue = isGradient(fill) && layerId ? gradientUrl(layerId) : fill;
   const cap = strokeLinecap ?? "butt";
   const join = strokeLinejoin ?? "miter";
-  const dashAttr = strokeDashArray ? ` stroke-dasharray="${strokeDashArray}"` : "";
-  const capJoinAttr = ` stroke-linecap="${cap}" stroke-linejoin="${join}"${dashAttr}`;
-  const strokeAttr = stroke ? ` stroke="${stroke}" stroke-width="${strokeWidth}"${capJoinAttr}` : "";
-  const opacityAttr = opacity !== 1 ? ` opacity="${opacity}"` : "";
+  const dashAttr = strokeDashArray ? ` stroke-dasharray="${a(strokeDashArray)}"` : "";
+  const capJoinAttr = ` stroke-linecap="${a(cap)}" stroke-linejoin="${a(join)}"${dashAttr}`;
+  const strokeAttr = stroke ? ` stroke="${a(stroke)}" stroke-width="${a(strokeWidth)}"${capJoinAttr}` : "";
+  const opacityAttr = opacity !== 1 ? ` opacity="${a(opacity)}"` : "";
 
   let el = "";
   // Rect / ellipse honour independent corner radii + stroke position
@@ -72,15 +68,15 @@ export function renderShapeToSvgString(props: ShapeElementProperties, layerId?: 
       el = `<g${opacityAttr}>${rectNodes.map(svgNodeToString).join("")}</g>`;
     }
   } else if (kind === "triangle") {
-    el = `<path d="${trianglePath(x, y, width, height)}" fill="${fillValue}"${strokeAttr}${opacityAttr}/>`;
+    el = `<path d="${a(trianglePath(x, y, width, height))}" fill="${a(fillValue)}"${strokeAttr}${opacityAttr}/>`;
   } else if (kind === "star") {
-    el = `<path d="${starPath(x, y, width, height)}" fill="${fillValue}"${strokeAttr}${opacityAttr}/>`;
+    el = `<path d="${a(starPath(x, y, width, height))}" fill="${a(fillValue)}"${strokeAttr}${opacityAttr}/>`;
   } else if (kind === "hexagon") {
-    el = `<path d="${hexagonPath(x, y, width, height)}" fill="${fillValue}"${strokeAttr}${opacityAttr}/>`;
+    el = `<path d="${a(hexagonPath(x, y, width, height))}" fill="${a(fillValue)}"${strokeAttr}${opacityAttr}/>`;
   } else if (kind === "line") {
     const midY = y + height / 2;
     const lineStroke = stroke || fillValue;
-    el = `<line x1="${x}" y1="${midY}" x2="${x + width}" y2="${midY}" stroke="${lineStroke}" stroke-width="${Math.max(strokeWidth, 2)}" stroke-linecap="${cap}"${dashAttr}${opacityAttr}/>`;
+    el = `<line x1="${a(x)}" y1="${a(midY)}" x2="${a(x + width)}" y2="${a(midY)}" stroke="${a(lineStroke)}" stroke-width="${a(Math.max(strokeWidth, 2))}" stroke-linecap="${a(cap)}" stroke-linejoin="${a(join)}"${dashAttr}${opacityAttr}/>`;
   }
 
   if (!el) return "";
@@ -100,15 +96,15 @@ export function renderShapeToSvgString(props: ShapeElementProperties, layerId?: 
   }
 
   if (transformStr) {
-    return `    <g transform="${transformStr}">\n      ${el}\n    </g>`;
+    return `    <g transform="${a(transformStr)}">\n      ${el}\n    </g>`;
   }
   return `    ${el}`;
 }
 
 export function renderImageToSvgString(props: ImageElementProperties): string {
   const { x, y, width, height, url, opacity, rotation, flipH, flipV } = props;
-  const opacityAttr = opacity !== 1 ? ` opacity="${opacity}"` : "";
-  const el = `<image href="${escXml(url)}" x="${x}" y="${y}" width="${width}" height="${height}"${opacityAttr} preserveAspectRatio="none"/>`;
+  const opacityAttr = opacity !== 1 ? ` opacity="${a(opacity)}"` : "";
+  const el = `<image href="${escXml(url)}" x="${a(x)}" y="${a(y)}" width="${a(width)}" height="${a(height)}"${opacityAttr} preserveAspectRatio="none"/>`;
 
   const cx = x + width / 2;
   const cy = y + height / 2;
@@ -124,23 +120,23 @@ export function renderImageToSvgString(props: ImageElementProperties): string {
   }
 
   if (transformStr) {
-    return `    <g transform="${transformStr}">\n      ${el}\n    </g>`;
+    return `    <g transform="${a(transformStr)}">\n      ${el}\n    </g>`;
   }
   return `    ${el}`;
 }
 
 export function renderPathToSvgString(props: PathElementProperties): string {
   const { points, stroke, strokeWidth, fill, opacity, closed, rotation, x, y, width, height, subpaths } = props;
-  const opacityAttr = opacity !== 1 ? ` opacity="${opacity}"` : "";
+  const opacityAttr = opacity !== 1 ? ` opacity="${a(opacity)}"` : "";
   const d = pointsToSvgD(points, closed, props.handles, subpaths);
-  const fillAttr = closed ? ` fill="${fill}"` : ` fill="none"`;
-  const pathDash = props.strokeDashArray ? ` stroke-dasharray="${props.strokeDashArray}"` : "";
-  const el = `<path d="${d}"${fillAttr} stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="${props.strokeLinecap ?? "round"}" stroke-linejoin="${props.strokeLinejoin ?? "round"}"${pathDash}${opacityAttr}/>`;
+  const fillAttr = closed ? ` fill="${a(fill)}"` : ` fill="none"`;
+  const pathDash = props.strokeDashArray ? ` stroke-dasharray="${a(props.strokeDashArray)}"` : "";
+  const el = `<path d="${a(d)}"${fillAttr} stroke="${a(stroke)}" stroke-width="${a(strokeWidth)}" stroke-linecap="${a(props.strokeLinecap ?? "round")}" stroke-linejoin="${a(props.strokeLinejoin ?? "round")}"${pathDash}${opacityAttr}/>`;
 
   if (rotation) {
     const cx = x + width / 2;
     const cy = y + height / 2;
-    return `    <g transform="rotate(${rotation}, ${cx}, ${cy})">\n      ${el}\n    </g>`;
+    return `    <g transform="${a(`rotate(${rotation}, ${cx}, ${cy})`)}">\n      ${el}\n    </g>`;
   }
   return `    ${el}`;
 }
