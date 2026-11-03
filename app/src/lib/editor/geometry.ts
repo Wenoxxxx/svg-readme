@@ -231,8 +231,8 @@ export function snapPosition(
   return { x: snap(position.x, "x"), y: snap(position.y, "y") };
 }
 
-/** Maximum canvas zoom (3200%, like Figma). */
-export const MAX_ZOOM = 32;
+/** Maximum canvas zoom (400%). */
+export const MAX_ZOOM = 4;
 /** Minimum canvas zoom (10%). */
 export const MIN_ZOOM = 0.1;
 

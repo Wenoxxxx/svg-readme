@@ -121,6 +121,31 @@ export function useLayerOperations(params: LayerOperationsParams) {
     setSelectedLayerId(duplicatedTopIds[0] ?? null);
   }, [documentRef, saveToHistory, setLayers, setElementProperties, setSelectedLayerIds, setSelectedLayerId]);
 
+  // ── Duplicate in place for Alt+drag (Figma) ──────────────────────────────────
+  // Copies `ids` (with descendants) at the SAME position, selects the copies
+  // and returns the old→new id map so the canvas keeps dragging the copies.
+  // No history entry: the drag's onMoveStart already saved one, so a single
+  // undo removes both the move and the duplicate.
+  const handleDuplicateForDrag = useCallback((ids: string[]): Record<string, string> | null => {
+    const { layers: currentLayers, elementProperties: currentProperties } = documentRef.current;
+    const result = duplicateLayersWithChildren(currentLayers, currentProperties, ids, 0, 0);
+    if (!result) return null;
+    const duplicatedLayers = linkInstancesToMasters(result.duplicatedLayers, currentLayers);
+    const map: Record<string, string> = {};
+    for (const id of ids) {
+      const copy = result.duplicatedTopIds.find((newId) => newId.startsWith(`${id}-duplicate-`));
+      if (copy) map[id] = copy;
+    }
+    setLayers((previous) => [
+      ...previous.map((layer) => ({ ...layer, active: false })),
+      ...duplicatedLayers,
+    ]);
+    setElementProperties((previous) => ({ ...previous, ...result.duplicatedProperties }));
+    setSelectedLayerIds(result.duplicatedTopIds);
+    setSelectedLayerId(result.duplicatedTopIds[0] ?? null);
+    return map;
+  }, [documentRef, setLayers, setElementProperties, setSelectedLayerIds, setSelectedLayerId]);
+
   // ── Reorder layers ────────────────────────────────────────────────────
   const handleReorderLayers = useCallback((direction: ReorderDirection) => {
     const currentSelection = documentRef.current.selectedLayerIds;
@@ -469,6 +494,7 @@ export function useLayerOperations(params: LayerOperationsParams) {
 
   return {
     handleDuplicate,
+    handleDuplicateForDrag,
     handleReorderLayers,
     handleGroup,
     handleUngroup,

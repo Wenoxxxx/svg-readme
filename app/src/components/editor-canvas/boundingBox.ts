@@ -60,6 +60,17 @@ export function computePathBounds(points: [number, number][]): { x: number; y: n
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
+/**
+ * Box used for smart-guide snapping. Same as getElementBoundingBox but without
+ * the 2px hit padding around text, so a snapped text box lands exactly on the
+ * guide (the element's x/y is the unpadded box corner).
+ */
+export function getElementSnapBounds(props: ElementProperties) {
+  const bb = getElementBoundingBox(props);
+  if (props.type !== "text") return bb;
+  return { x: bb.x + 2, y: bb.y + 2, width: Math.max(bb.width - 4, 0), height: Math.max(bb.height - 4, 0) };
+}
+
 /** Returns bounding box for any element type — used for rubber-band selection */
 export function getElementBoundingBox(props: ElementProperties) {
   try {

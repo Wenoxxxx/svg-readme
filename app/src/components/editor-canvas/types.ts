@@ -198,7 +198,14 @@ export interface CanvasProps {
     y: number,
     width: number,
     height: number,
+    /** Extra creation data. Lines carry their drag direction so a diagonal
+     *  line keeps its orientation instead of collapsing to horizontal. */
+    extra?: { lineDirection?: "horizontal" | "down" | "up" },
   ) => void;
+  /** Alt+drag (Figma): duplicate `ids` in place (no offset, no history entry —
+   *  the move already saved one) and return the old→new id map so the drag
+   *  continues on the copies. Return null when nothing was duplicated. */
+  onDuplicateForDrag?: (ids: string[]) => Record<string, string> | null;
   /** Called when user finishes drawing a path (pen tool) */
   onCreatePath: (props: Omit<PathElementProperties, "type">) => void;
   /** Called when the paint bucket tool paints a layer with the current color. */

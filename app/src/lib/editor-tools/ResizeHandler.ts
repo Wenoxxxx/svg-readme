@@ -331,14 +331,14 @@ export function snapResizeBox(
       : [{ edge: edges.x === "left" ? "start" : "end", value: edges.x === "left" ? x : x + width }];
     const best = findBest(values, "x");
     if (best) {
-      let nx = x;
-      let nw = width;
       const d = best.delta;
+      let nx: number;
+      let nw: number;
       if (options.altKey) {
         if (best.edge === "end") { nw = width + 2 * d; nx = x - d; }
         else { nx = x + d; nw = width - 2 * d; }
       } else if (best.edge === "start") { nx = x + d; nw = width - d; }
-      else { nw = width + d; }
+      else { nx = x; nw = width + d; }
       if (nw >= minSize) {
         x = nx;
         width = nw;
@@ -358,14 +358,14 @@ export function snapResizeBox(
       : [{ edge: edges.y === "top" ? "start" : "end", value: edges.y === "top" ? y : y + height }];
     const best = findBest(values, "y");
     if (best) {
-      let ny = y;
-      let nh = height;
       const d = best.delta;
+      let ny: number;
+      let nh: number;
       if (options.altKey) {
         if (best.edge === "end") { nh = height + 2 * d; ny = y - d; }
         else { ny = y + d; nh = height - 2 * d; }
       } else if (best.edge === "start") { ny = y + d; nh = height - d; }
-      else { nh = height + d; }
+      else { ny = y; nh = height + d; }
       if (nh >= minSize) {
         y = ny;
         height = nh;

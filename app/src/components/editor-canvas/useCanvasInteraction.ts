@@ -9,6 +9,7 @@ import {
 import {
   getElementBoundingBox,
 } from "./ElementsRenderer";
+import { getElementSnapBounds } from "./boundingBox";
 import {
   getToolHandler,
 } from "../../lib/editor-tools/registry";
@@ -46,7 +47,7 @@ import {
 import { screenToWorld, clampZoom, computeSnapGuides, remapBoxesThroughBounds, sameGuideLines, getLockedLayerIds, type SnapGuideLine } from "../../lib/editor/geometry";
 import { lineFromDrag } from "./shapeHelpers";
 import { mergeState } from "./Canvas/helpers";
-import type { ElementProperties, ShapeKind } from "./ElementsRenderer";
+import type { ElementProperties } from "./ElementsRenderer";
 import type { LayerType } from "../../context/EditorContext";
 
 // ─── Hook params ──────────────────────────────────────────────────────────────
@@ -135,6 +136,9 @@ export function useCanvasInteraction({
   const moveHistorySavedRef = useRef(false);
   const lastPenClickRef = useRef<{ t: number; x: number; y: number } | null>(null);
   const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
+  /** Alt+drag: old→new id map once the selection has been duplicated for the
+   *  current drag (null = not duplicated yet). Reset on mouseup. */
+  const dragDuplicateMapRef = useRef<Record<string, string> | null>(null);
 
   /** Locked layers (directly or via a locked ancestor) — never hit-testable. */
   const lockedLayerIds = useMemo(() => getLockedLayerIds(layers), [layers]);
@@ -293,11 +297,28 @@ export function useCanvasInteraction({
       : selectedLayerId || null;
   const selectedProps = selectedId ? elementProperties[selectedId] : null;
 
-  const visibleLayerIds = layers
-    .filter((layer) => layer.visible && elementProperties[layer.id])
-    .map((layer) => layer.id);
+  const visibleLayerIds = useMemo(
+    () => layers.filter((layer) => layer.visible && elementProperties[layer.id]).map((layer) => layer.id),
+    [layers, elementProperties],
+  );
   /** Visible AND unlocked — the only layers marquee selection may pick. */
-  const selectableLayerIds = visibleLayerIds.filter((id) => !lockedLayerIds.has(id));
+  const selectableLayerIds = useMemo(
+    () => visibleLayerIds.filter((id) => !lockedLayerIds.has(id)),
+    [visibleLayerIds, lockedLayerIds],
+  );
+  /** Snap-target boxes (unpadded) of every visible layer not in `excluded`.
+   *  Locked layers still act as snap targets, like in Figma. */
+  const selectableOrVisibleSiblings = useCallback(
+    (excluded: ReadonlySet<string>) =>
+      visibleLayerIds
+        .filter((id) => !excluded.has(id))
+        .map((id) => {
+          const props = elementProperties[id];
+          return props ? getElementSnapBounds(props) : null;
+        })
+        .filter((bb): bb is ReturnType<typeof getElementSnapBounds> => bb !== null),
+    [visibleLayerIds, elementProperties],
+  );
 
   // ── Get SVG coords ───────────────────────────────────────────────────────
   const getSVGCoords = useCallback(
@@ -416,6 +437,24 @@ export function useCanvasInteraction({
         setState((prev) => ({ ...prev, ...startPan(e, viewport) }));
         return;
       }
+      // Locked layers (or children of locked groups) are not hit-testable:
+      // behave exactly like a press on empty canvas.
+      if (lockedLayerIds.has(layerId)) {
+        e.stopPropagation();
+        handleMouseDown(e, _state);
+        return;
+      }
+      // Creation tools create on top of existing elements (Figma): the press
+      // starts a new shape / pen vertex / text box instead of selecting.
+      if (
+        activeTool === "shape" ||
+        activeTool === "pen" ||
+        (activeTool === "text" && elementProperties[layerId]?.type !== "text")
+      ) {
+        e.stopPropagation();
+        handleMouseDown(e, _state);
+        return;
+      }
       e.stopPropagation();
       // Guard: missing props should not crash — stale id from a bad document
       const targetProps = elementProperties[layerId];
@@ -465,6 +504,8 @@ export function useCanvasInteraction({
       layers,
       elementProperties,
       viewport,
+      lockedLayerIds,
+      handleMouseDown,
       onSelectLayer,
       onShiftSelectLayer,
       onEditText,
@@ -523,16 +564,17 @@ export function useCanvasInteraction({
 
       if (state.rotateState) {
         if (state.rotateState.selectionIds && state.rotateState.initialRotations) {
-          const delta = computeRotationDelta(
+          // Multi-rotate: every element orbits the selection center (Figma);
+          // Shift snaps the increment to 15°.
+          const next = computeMultiRotation(
             state.rotateState,
             ctx.worldPoint.x,
             ctx.worldPoint.y,
+            ctx.shiftKey,
           );
-          for (const id of state.rotateState.selectionIds) {
-            const initial = state.rotateState.initialRotations[id] ?? 0;
-            let next = (initial + delta) % 360;
-            if (next < 0) next += 360;
-            onRotateElement?.(id, next);
+          for (const [id, r] of Object.entries(next)) {
+            if (r.x !== undefined && r.y !== undefined) onMoveElement(id, r.x, r.y);
+            onRotateElement?.(id, r.rotation);
           }
           return;
         }
@@ -542,30 +584,28 @@ export function useCanvasInteraction({
       }
 
       if (state.resizeState) {
-        const dx = ctx.worldPoint.x - state.resizeState.startX;
-        const dy = ctx.worldPoint.y - state.resizeState.startY;
-        const { x, y, width, height } = updateResize(state.resizeState, dx, dy, ctx.shiftKey, ctx.altKey);
-        let finalX = x, finalY = y, finalW = width, finalH = height;
+        const rs = state.resizeState;
+        const dx = ctx.worldPoint.x - rs.startX;
+        const dy = ctx.worldPoint.y - rs.startY;
+        // Rotation-aware: the delta is converted into the element's local frame
+        // and the opposite handle stays anchored in world space.
+        const box = updateResizeWorld(rs, dx, dy, ctx.shiftKey, ctx.altKey);
+        let finalX = box.x, finalY = box.y, finalW = box.width, finalH = box.height;
         let snapGuideLines: SnapGuideLine[] = [];
 
-        if (snapEnabled) {
-          const resizedBounds = { x, y, width, height };
-          const resizedId = state.resizeState.elementId;
-          const siblingBounds = visibleLayerIds
-            .filter((id) => id !== resizedId)
-            .map((id) => {
-              const props = elementProperties[id];
-              return props ? getElementBoundingBox(props) : null;
-            })
-            .filter((bb): bb is ReturnType<typeof getElementBoundingBox> => bb !== null);
-          const snap = computeResizeSnapGuides(resizedBounds, siblingBounds);
-          if (snap.guides.length > 0) {
-            finalX = snap.position.x;
-            finalY = snap.position.y;
-            finalW = Math.max(width + (snap.position.x - x), 10);
-            finalH = Math.max(height + (snap.position.y - y), 10);
-            snapGuideLines = snap.guides;
-          }
+        // Smart guides only for axis-aligned boxes, and not while Shift locks
+        // the aspect ratio (snapping one edge would break the ratio).
+        if (snapEnabled && !rs.rotation && !ctx.shiftKey) {
+          const excluded = new Set(rs.selectionIds ?? [rs.elementId]);
+          const siblingBounds = selectableOrVisibleSiblings(excluded);
+          const minSize = rs.isLine ? 0 : rs.isText ? MIN_TEXTBOX_SIZE : MIN_SHAPE_SIZE;
+          // Only the edges the handle drags are snapped — the anchor never moves.
+          const snap = snapResizeBox(box, rs.handle, siblingBounds, { altKey: ctx.altKey, minSize });
+          finalX = snap.box.x;
+          finalY = snap.box.y;
+          finalW = snap.box.width;
+          finalH = snap.box.height;
+          snapGuideLines = snap.guides;
         }
 
         if (state.resizeState.selectionIds && state.resizeState.initialBoxes && state.resizeState.initialSelectionBounds) {
@@ -588,52 +628,77 @@ export function useCanvasInteraction({
         } else {
           onResizeElement?.(state.resizeState.elementId, finalX, finalY, finalW, finalH);
         }
-        if (snapGuideLines.length !== state.snapGuideLines.length) {
+        if (!sameGuideLines(snapGuideLines, state.snapGuideLines)) {
           setState((prev) => ({ ...prev, snapGuideLines }));
         }
         return;
       }
 
       if (state.dragState) {
+        const ds = state.dragState;
+        // Alt+drag: duplicate the selection once the pointer really moves, then
+        // drag the copies (the originals stay where they were).
+        let idMap: Record<string, string> | null = null;
+        if (ds.duplicateOnMove) {
+          if (!dragDuplicateMapRef.current) {
+            const movedPx = Math.hypot(ctx.worldPoint.x - ds.startX, ctx.worldPoint.y - ds.startY) * zoom;
+            if (movedPx < 2) return;
+            if (!moveHistorySavedRef.current) {
+              moveHistorySavedRef.current = true;
+              onMoveStart?.();
+            }
+            const ids = ds.multiStartPositions ? Object.keys(ds.multiStartPositions) : [ds.elementId];
+            dragDuplicateMapRef.current = onDuplicateForDrag?.(ids) ?? {};
+          }
+          idMap = dragDuplicateMapRef.current;
+        }
+        const target = (id: string) => idMap?.[id] ?? id;
+
         if (!moveHistorySavedRef.current) {
           moveHistorySavedRef.current = true;
           onMoveStart?.();
         }
-        if (state.dragState.multiStartPositions) {
+        if (ds.multiStartPositions) {
           const { dx, dy, snapDelta } = computeMultiDragDeltas(
-            state.dragState,
+            ds,
             ctx.worldPoint,
             snapEnabled,
             gridSize,
+            ctx.shiftKey,
           );
-          for (const [id, pos] of Object.entries(state.dragState.multiStartPositions)) {
-            onMoveElement(id, pos.x + dx + snapDelta.x, pos.y + dy + snapDelta.y);
+          for (const [id, pos] of Object.entries(ds.multiStartPositions)) {
+            onMoveElement(target(id), pos.x + dx + snapDelta.x, pos.y + dy + snapDelta.y);
           }
         } else {
-          const draggedId = state.dragState.elementId;
+          const draggedId = ds.elementId;
           const draggedProps = elementProperties[draggedId];
-          const rawPos = computeDragPosition(state.dragState, ctx.worldPoint, snapEnabled, gridSize);
+          const rawPos = computeDragPosition(ds, ctx.worldPoint, snapEnabled, gridSize, ctx.shiftKey);
           let finalPos = rawPos;
           let snapGuideLines: SnapGuideLine[] = [];
 
           if (snapEnabled && draggedProps) {
-            const draggedBounds = getElementBoundingBox({ ...draggedProps, x: rawPos.x, y: rawPos.y });
-            const siblingBounds = visibleLayerIds
-              .filter((id) => id !== draggedId)
-              .map((id) => {
-                const props = elementProperties[id];
-                return props ? getElementBoundingBox(props) : null;
-              })
-              .filter((bb): bb is ReturnType<typeof getElementBoundingBox> => bb !== null);
+            // Unpadded snap boxes: text's 2px hit padding must not offset the snap.
+            const draggedBounds = getElementSnapBounds({ ...draggedProps, x: rawPos.x, y: rawPos.y } as ElementProperties);
+            const siblingBounds = selectableOrVisibleSiblings(new Set([draggedId, target(draggedId)]));
             const snap = computeSnapGuides(draggedBounds, siblingBounds);
             if ((snap.position.x !== draggedBounds.x || snap.position.y !== draggedBounds.y) && snap.guides.length > 0) {
-              finalPos = { x: snap.position.x, y: snap.position.y };
+              // Shift the element by the box's snap delta (box ≠ element origin for some types).
+              finalPos = {
+                x: rawPos.x + (snap.position.x - draggedBounds.x),
+                y: rawPos.y + (snap.position.y - draggedBounds.y),
+              };
+              // Keep a Shift-constrained axis exactly on its start value.
+              if (ctx.shiftKey) {
+                const startPos = { x: ds.startX - ds.offsetX, y: ds.startY - ds.offsetY };
+                if (rawPos.x === startPos.x) finalPos.x = rawPos.x;
+                if (rawPos.y === startPos.y) finalPos.y = rawPos.y;
+              }
               snapGuideLines = snap.guides;
             }
           }
 
-          onMoveElement(draggedId, finalPos.x, finalPos.y);
-          if (snapGuideLines.length !== state.snapGuideLines.length) {
+          onMoveElement(target(draggedId), finalPos.x, finalPos.y);
+          if (!sameGuideLines(snapGuideLines, state.snapGuideLines)) {
             setState((prev) => ({ ...prev, snapGuideLines }));
           }
         }
@@ -649,7 +714,7 @@ export function useCanvasInteraction({
         setState((prev) => ({
           ...prev,
           rubberBandState: newBand,
-          rubberBandHighlightedIds: computeRubberBandIntersections(newBand, elementProperties, visibleLayerIds),
+          rubberBandHighlightedIds: computeRubberBandIntersections(newBand, elementProperties, selectableLayerIds),
         }));
         return;
       }
@@ -677,10 +742,13 @@ export function useCanvasInteraction({
       onResizeElement,
       onMoveStart,
       onMoveElement,
+      onDuplicateForDrag,
       elementProperties,
-      visibleLayerIds,
+      selectableLayerIds,
+      selectableOrVisibleSiblings,
       snapEnabled,
       gridSize,
+      zoom,
       setState,
     ],
   );
@@ -702,6 +770,7 @@ export function useCanvasInteraction({
       }
       if (state.dragState) {
         moveHistorySavedRef.current = false;
+        dragDuplicateMapRef.current = null;
         setState((prev) => ({
           ...prev,
           dragState: null,
@@ -722,7 +791,7 @@ export function useCanvasInteraction({
           const intersecting = computeRubberBandIntersections(
             state.rubberBandState,
             elementProperties,
-            visibleLayerIds,
+            selectableLayerIds,
           );
           onRubberBandSelect?.(intersecting, state.rubberBandState.addToExisting);
         }
@@ -751,6 +820,14 @@ export function useCanvasInteraction({
       }
       if (state.shapeDragState) {
         const { kind, startX, startY, currentX, currentY, shiftKey } = state.shapeDragState;
+        if (kind === "line") {
+          // Lines keep their drag direction (diagonal lines stay diagonal);
+          // Shift snaps the angle to 45° steps.
+          const line = lineFromDrag(startX, startY, currentX, currentY, shiftKey);
+          onCreateShape(kind, line.x, line.y, line.width, line.height, { lineDirection: line.lineDirection });
+          setState((prev) => ({ ...prev, shapeDragState: null }));
+          return;
+        }
         const dx = currentX - startX;
         const dy = currentY - startY;
         const isClick = Math.abs(dx) < 3 && Math.abs(dy) < 3;
@@ -761,7 +838,7 @@ export function useCanvasInteraction({
         let fy = isClick ? startY - DS / 2 : Math.min(startY, currentY);
 
         // Shift constraint: force 1:1 aspect ratio (perfect square / circle)
-        if (!isClick && shiftKey && kind !== "line") {
+        if (!isClick && shiftKey) {
           const side = Math.max(Math.abs(dx), Math.abs(dy));
           fw = side;
           fh = side;
@@ -796,20 +873,23 @@ export function useCanvasInteraction({
       onCreateShape,
       finalizePath,
       elementProperties,
-      visibleLayerIds,
+      selectableLayerIds,
       setState,
     ],
   );
 
   // ── Wheel zoom ───────────────────────────────────────────────────────────
+  // Native (non-passive) WheelEvent handler — Canvas registers it with
+  // addEventListener(..., { passive: false }) so preventDefault() actually
+  // stops browser page-zoom on ctrl+wheel / pinch. Ctrl/Cmd+wheel and pinch
+  // zoom around the cursor; plain wheel pans (Shift = horizontal).
   const handleWheel = useCallback(
-    (e: React.WheelEvent<SVGSVGElement>) => {
+    (e: WheelEvent) => {
       e.preventDefault();
       if (!onViewportChange) return;
       const svg = svgRef.current;
       if (!svg) return;
-      const next = handleZoom(e, viewport, svg);
-      if (next) onViewportChange(next);
+      onViewportChange(computeWheelViewport(e, viewport, svg.getBoundingClientRect()));
     },
     [onViewportChange, viewport, svgRef],
   );
@@ -864,6 +944,7 @@ export function useCanvasInteraction({
     selectedId,
     selectedProps,
     visibleLayerIds,
+    lockedLayerIds,
     spacePressedRef,
     isSpaceHeld,
     moveHistorySavedRef,
