@@ -25,8 +25,12 @@ export const safeToken = (id: string): string => String(id).replace(/[^a-zA-Z0-9
  * that could end the element / start markup (`<`) or form XML entities (`&`),
  * plus CDATA terminators. CSS keyframes never need either character.
  */
-export const sanitizeStyleText = (css: string): string =>
-  String(css ?? "").replace(/\]\]>/g, "").replace(/[<&]/g, "");
+export const sanitizeStyleText = (css: string): string => {
+  let out = String(css ?? "").replace(/[<&]/g, "");
+  // Loop: a single pass can be bypassed ("]]]]>>" collapses to "]]>").
+  while (out.includes("]]>")) out = out.replace(/\]\]>/g, "");
+  return out;
+};
 
 /** Sanitise a single CSS value (timing function, keyword, name…): also
  *  removes characters that could close the declaration / rule. */

@@ -53,12 +53,42 @@ const build = (layers: LayerType[], elementProperties: Record<string, ElementPro
 
 /** Parse as XML and return the document (throws on malformed output). */
 const parse = (svg: string) => {
-  // The font @import line intentionally keeps raw `&` (replaced by fontEmbed).
-  const clean = svg.replace(/^<\?xml[^>]*>\s*/, "").replace(/@import[^\n]*\n/, "");
+  // Parse the real output: the <style> block is CDATA-wrapped, so the font
+  // @import's raw `&` must not break XML well-formedness.
+  const clean = svg.replace(/^<\?xml[^>]*>\s*/, "");
   const doc = new DOMParser().parseFromString(clean, "image/svg+xml");
   expect(doc.getElementsByTagName("parsererror").length).toBe(0);
   return doc;
 };
+
+describe("export well-formedness", () => {
+  it("exports well-formed XML even with the Google Fonts @import (raw &)", () => {
+    const svg = build([layer("a")], { a: rect() });
+    expect(svg).toContain("&family=");
+    expect(svg).toContain("<![CDATA[");
+    parse(svg);
+  });
+
+  it("custom keyframes cannot terminate the CDATA section (nested ]]> bypass)", () => {
+    const svg = build([layer("a")], {
+      a: rect({
+        animation: {
+          name: "x",
+          duration: 1,
+          delay: 0,
+          timingFunction: "linear",
+          iterationCount: "infinite",
+          direction: "normal",
+          fillMode: "none",
+          customKeyframes: "@keyframes x { 0% { opacity: 0 } } ]]]]>><script>alert(1)</script>",
+        },
+      }),
+    });
+    const body = svg.slice(svg.indexOf("<![CDATA[") + 9, svg.lastIndexOf("]]>"));
+    expect(body).not.toContain("]]>");
+    expect(parse(svg).getElementsByTagName("script").length).toBe(0);
+  });
+});
 
 describe("export security: document data cannot inject markup", () => {
   const PAYLOAD = `"/><script>alert(1)</script><g x="`;

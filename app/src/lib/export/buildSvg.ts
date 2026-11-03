@@ -297,9 +297,9 @@ export function buildSvgString(options: BuildSvgOptions): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${a(w)}" height="${a(h)}" viewBox="0 0 ${a(w)} ${a(h)}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
   <defs>
-    <style>
+    <style><![CDATA[
 ${styleBlock}
-    </style>
+    ]]></style>
 ${gradientDefs.join("\n")}
 ${maskDefs.join("\n")}
 ${filterDefs.join("\n")}
