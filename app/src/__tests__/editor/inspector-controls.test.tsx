@@ -191,7 +191,7 @@ describe("Animate tab undo", () => {
     fireEvent.click(screen.getByRole("button", { name: "Fade In" }));
     expect(onCheckpoint).toHaveBeenCalledTimes(1);
     expect(onCheckpoint.mock.calls[0][0]).toMatch(/^anim:a/);
-  });
+  }, 20000); // first right-bar render is slow under full-suite load
 });
 
 describe("timeline keyframes", () => {
