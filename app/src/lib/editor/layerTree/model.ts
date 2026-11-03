@@ -80,6 +80,11 @@ export function buildLayerTreeIndex(
  * Flatten the tree into rows. A layer's children are only emitted while the
  * layer's id is in `expandedIds`, so collapsed subtrees are skipped entirely.
  * Every id is emitted at most once even for malformed input.
+ *
+ * Figma order: the document array is back-to-front (the last sibling paints on
+ * top), but the panel lists the *frontmost* layer first. Siblings are therefore
+ * emitted in reverse document order at every level; `roots`/`byParent` stay in
+ * document order so the drop resolver can map a visual slot back to an index.
  */
 export function visibleLayerRows(
   roots: readonly string[],
@@ -90,7 +95,8 @@ export function visibleLayerRows(
   const seen = new Set<string>();
 
   const append = (ids: readonly string[], level: number) => {
-    for (const id of ids) {
+    for (let index = ids.length - 1; index >= 0; index--) {
+      const id = ids[index];
       if (seen.has(id)) continue;
       seen.add(id);
 

@@ -13,6 +13,9 @@ import type { ElementProperties } from "../../../components/editor-canvas/Elemen
 
 const SHAPE_CYCLE: ShapeSubTool[] = ["rect", "circle", "triangle", "star", "hexagon", "line"];
 
+/** Bare-letter tool/view shortcuts handled in the switch below. */
+const TOOL_LETTER_KEYS = new Set(["v", "t", "p", "r", "o", "l", "h", "g"]);
+
 export interface KeyboardShortcutHandlers {
   isEditingRef: RefObject<boolean>;
   handleCommitText: () => void;
@@ -199,6 +202,15 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
       if (matchedBinding) {
         e.preventDefault();
         runLayerCommand(layerCommands, matchedBinding.command);
+        return;
+      }
+
+      // Single-letter tool keys only fire bare (or with Shift): Ctrl+P, Ctrl+R,
+      // Ctrl+T, Alt+letter … belong to the browser/OS and must reach it.
+      if (
+        TOOL_LETTER_KEYS.has(e.key.toLowerCase()) &&
+        (e.ctrlKey || e.metaKey || e.altKey)
+      ) {
         return;
       }
 

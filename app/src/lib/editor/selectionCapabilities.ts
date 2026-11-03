@@ -1,6 +1,7 @@
 import type { LayerType } from "../../context/EditorContext";
 import type { ElementProperties } from "../../components/editor-canvas/ElementsRenderer";
 import { canGroupLayers } from "./documentActions";
+import { canFlattenSelection } from "./layerOps/flattenGroup";
 
 /**
  * Everything needed to answer "what is allowed on the current selection".
@@ -44,6 +45,12 @@ export interface SelectionCapabilities {
   /** At least one selected layer carries element properties that can be mirrored. */
   canFlip: boolean;
   canCopyAsPng: boolean;
+  /** A single selected layer with element properties — Copy as CSS. */
+  canCopyAsCss: boolean;
+  /** The selection holds a component instance whose link can be cleared. */
+  canDetachInstance: boolean;
+  /** Select matching layers (same type + fill/stroke). */
+  canSelectMatching: boolean;
 }
 
 export interface SelectionCapabilitiesInput {
@@ -112,7 +119,9 @@ export function computeSelectionCapabilities(
     canUngroup: selectedLayers.some((layer) => layer.type === "group"),
     canWrapInFrame: hasSelection && shareParent(selectedLayers),
     canAddAutoLayout: hasSelection,
-    canFlatten: selectedLayers.some((layer) => layer.type === "group"),
+    // Real flatten merges outlines into one path, so it needs geometry that
+    // has an outline (no images/text/open strokes anywhere in the selection).
+    canFlatten: canFlattenSelection(layers, elementProperties, [...selectedSet]),
     canBoolean: shapeOrPathCount >= 2,
     canOutlineText: textCount > 0,
     canOutlineStroke: shapeOrPathCount > 0,
@@ -126,7 +135,28 @@ export function computeSelectionCapabilities(
     canToggleLock: hasSelection,
     canFlip: selectedProperties.some(Boolean),
     canCopyAsPng: hasSelection,
+    canCopyAsCss: selectedCount === 1 && Boolean(selectedProperties[0]),
+    canDetachInstance: selectedLayers.some(
+      (layer) => layer.isComponent !== true && Boolean(layer.componentId),
+    ),
+    canSelectMatching: hasSelection,
   };
+}
+
+/**
+ * The layer a selection-wide command labels itself from and acts on (Use as
+ * mask): the right-clicked/anchor layer when it is part of the selection,
+ * otherwise the first selected layer in document order. The menu and the
+ * dispatcher both resolve the target through here so label and action agree.
+ */
+export function resolveCommandTargetId(
+  layers: readonly LayerType[],
+  selectedLayerIds: readonly string[],
+  anchorLayerId?: string | null,
+): string | null {
+  const selected = new Set(selectedLayerIds);
+  if (anchorLayerId && selected.has(anchorLayerId)) return anchorLayerId;
+  return layers.find((layer) => selected.has(layer.id))?.id ?? null;
 }
 
 /** True when every layer shares the same parent (the frame op requires it). */

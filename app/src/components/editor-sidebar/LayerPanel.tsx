@@ -14,6 +14,7 @@ import type { ElementProperties } from "../editor-canvas/ElementsRenderer";
 import { LayerItem } from "./LayerPanel/LayerItem";
 import {
   buildLayerTreeIndex,
+  collectDescendantIds,
   layerSelectionForTarget,
   visibleLayerRows,
 } from "../../lib/editor/layerTree/model";
@@ -69,7 +70,30 @@ interface LayerPanelProps {
    * the canvas menu does.
    */
   clipboardCount?: number;
+  /**
+   * Called once right before the panel mutates the document (eye/lock toggle,
+   * rename, drag reorder, fallback add). The editor passes `saveToHistory` so
+   * every panel edit is a discrete undo step. Collapse/expand never calls it.
+   */
+  onBeforeMutation?: () => void;
+  /**
+   * Row trash button. The editor routes it through the same delete path as the
+   * context menu (lock-aware, removes descendants + element properties,
+   * updates the selection, records history). Without it the panel falls back to
+   * removing the row and its descendants locally.
+   */
+  onDeleteLayer?: (id: string) => void;
+  /** Header "Add Layer" — the editor creates a real default rectangle. */
+  onAddLayer?: () => void;
+  /** Header "Add Group". */
+  onAddGroup?: () => void;
 }
+
+/** The document-level callbacks the editor shell threads down to the panel. */
+export type LayerPanelDocumentActions = Pick<
+  LayerPanelProps,
+  "onBeforeMutation" | "onDeleteLayer" | "onAddLayer" | "onAddGroup"
+>;
 
 // ─── Drop indicator types ─────────────────────────────────────────────────────
 
@@ -112,6 +136,10 @@ export default function LayerPanel({
   onSelectionChange,
   onClearSelection,
   clipboardCount = 0,
+  onBeforeMutation,
+  onDeleteLayer,
+  onAddLayer,
+  onAddGroup,
 }: LayerPanelProps) {
   const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<DragOverState | null>(null);
@@ -414,20 +442,28 @@ export default function LayerPanel({
       });
 
       if (target) {
-        setLayers((prev) => {
-          const next = reorderChild(
-            prev,
-            sourceId,
-            target.parentId,
-            target.index,
+        // Computed outside the updater: history + the persistence callback are
+        // side effects and must run exactly once.
+        const next = reorderChild(
+          layers,
+          sourceId,
+          target.parentId,
+          target.index,
+        );
+        const moved = next.some((layer, index) => {
+          const before = layers[index];
+          return (
+            before?.id !== layer.id ||
+            (before.parentId ?? null) !== (layer.parentId ?? null)
           );
-          if (next === prev) return prev;
-          // Notify parent to persist new order
+        });
+        if (next !== layers && moved) {
+          onBeforeMutation?.();
+          setLayers(next);
           onReorder?.(
             next.map((layer, index) => ({ id: layer.id, orderIndex: index })),
           );
-          return next;
-        });
+        }
       }
     }
 
@@ -443,27 +479,29 @@ export default function LayerPanel({
   // ── Action handlers ──────────────────────────────────────────────────────
   const toggleVisibility = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    setLayers((prev) =>
-      prev.map((l) => {
-        if (l.id !== id) return l;
-        onToggleVisibility?.(id, !l.visible);
-        return { ...l, visible: !l.visible };
-      }),
-    );
+    const layer = layerById.get(id);
+    if (!layer) return;
+    const visible = !layer.visible;
+    onBeforeMutation?.();
+    setLayers((prev) => prev.map((l) => (l.id === id ? { ...l, visible } : l)));
+    onToggleVisibility?.(id, visible);
   };
 
   const toggleLock = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    setLayers((prev) =>
-      prev.map((l) => {
-        if (l.id !== id) return l;
-        onToggleLock?.(id, !l.locked);
-        return { ...l, locked: !l.locked };
-      }),
-    );
+    const layer = layerById.get(id);
+    if (!layer) return;
+    const locked = !layer.locked;
+    onBeforeMutation?.();
+    setLayers((prev) => prev.map((l) => (l.id === id ? { ...l, locked } : l)));
+    onToggleLock?.(id, locked);
   };
 
   const handleAddLayer = () => {
+    if (onAddLayer) {
+      onAddLayer();
+      return;
+    }
     const newLayer: LayerType = {
       id: Date.now().toString(),
       name: "New Layer",
@@ -473,18 +511,23 @@ export default function LayerPanel({
       active: true,
       parentId: null,
     };
-    setLayers((prev) => {
-      const activeIndex = prev.findIndex((l) => l.active);
-      const insertIndex = activeIndex >= 0 ? activeIndex : 0;
-      const newLayers = prev.map((l) => ({ ...l, active: false }) as LayerType);
-      newLayers.splice(insertIndex, 0, newLayer);
-      onAdd?.(newLayer, insertIndex);
-      return newLayers;
-    });
+    // Fallback (no editor wiring): insert in front of the active layer.
+    const activeIndex = layers.findIndex((l) => l.active);
+    const insertIndex = activeIndex >= 0 ? activeIndex + 1 : layers.length;
+    const newLayers = layers.map((l) => ({ ...l, active: false }) as LayerType);
+    newLayers.splice(insertIndex, 0, newLayer);
+    onBeforeMutation?.();
+    setLayers(newLayers);
+    onAdd?.(newLayer, insertIndex);
+    onSelectionChange?.([newLayer.id]);
   };
 
   // ── Add empty group (Open Pencil style: creates a container on the canvas) ──
   const handleAddGroup = () => {
+    if (onAddGroup) {
+      onAddGroup();
+      return;
+    }
     const newGroup: LayerType = {
       id: `group-${Date.now()}`,
       name: "Group",
@@ -495,46 +538,77 @@ export default function LayerPanel({
       parentId: null,
       collapsed: false,
     };
-    setLayers((prev) => {
-      const activeIndex = prev.findIndex((l) => l.active);
-      const insertIndex = activeIndex >= 0 ? activeIndex + 1 : prev.length;
-      const newLayers = prev.map((l) => ({ ...l, active: false }) as LayerType);
-      newLayers.splice(insertIndex, 0, newGroup);
-      onAdd?.(newGroup, insertIndex);
-      return newLayers;
-    });
+    const activeIndex = layers.findIndex((l) => l.active);
+    const insertIndex = activeIndex >= 0 ? activeIndex + 1 : layers.length;
+    const newLayers = layers.map((l) => ({ ...l, active: false }) as LayerType);
+    newLayers.splice(insertIndex, 0, newGroup);
+    onBeforeMutation?.();
+    setLayers(newLayers);
+    onAdd?.(newGroup, insertIndex);
+    onSelectionChange?.([newGroup.id]);
   };
 
   const handleDeleteLayer = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     onDelete?.(id);
-    setLayers((prev) => prev.filter((l) => l.id !== id));
+    if (onDeleteLayer) {
+      onDeleteLayer(id);
+      return;
+    }
+    // Fallback: same semantics as the editor's delete path, minus the element
+    // properties this panel does not own.
+    const layer = layerById.get(id);
+    if (!layer || layer.locked) return;
+    const doomed = new Set([id, ...collectDescendantIds(layers, id)]);
+    onBeforeMutation?.();
+    setLayers(layers.filter((l) => !doomed.has(l.id)));
   };
+
+  // Rename: the id being edited is mirrored into a ref so a blur that fires
+  // after Esc (or after Enter already committed) is a no-op.
+  const editingRef = useRef<string | null>(null);
+  const beginEditing = useCallback((id: string, name: string) => {
+    editingRef.current = id;
+    setEditingLayerId(id);
+    setEditingName(name);
+  }, []);
 
   const startEditing = (e: React.MouseEvent, id: string, name: string) => {
     e.stopPropagation();
-    setEditingLayerId(id);
-    setEditingName(name);
+    beginEditing(id, name);
+  };
+
+  const cancelEditing = () => {
+    editingRef.current = null;
+    setEditingLayerId(null);
   };
 
   const saveEditing = () => {
-    if (editingLayerId) {
-      const newName = editingName.trim() || "Untitled Layer";
-      onRename?.(editingLayerId, newName);
-      setLayers((prev) =>
-        prev.map((l) =>
-          l.id === editingLayerId ? { ...l, name: newName } : l,
-        ),
-      );
-      setEditingLayerId(null);
-    }
+    const id = editingRef.current;
+    if (!id) return;
+    editingRef.current = null;
+    setEditingLayerId(null);
+    const layer = layerById.get(id);
+    const newName = editingName.trim();
+    // An empty name reverts; an unchanged name is not an edit.
+    if (!layer || !newName || newName === layer.name) return;
+    onBeforeMutation?.();
+    setLayers((prev) =>
+      prev.map((l) => (l.id === id ? { ...l, name: newName } : l)),
+    );
+    onRename?.(id, newName);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Keep editor shortcuts (Backspace = delete layer, letters = tools) out of
+    // the rename field.
+    e.stopPropagation();
     if (e.key === "Enter") {
+      e.preventDefault();
       saveEditing();
     } else if (e.key === "Escape") {
-      setEditingLayerId(null);
+      e.preventDefault();
+      cancelEditing();
     }
   };
 
@@ -546,14 +620,11 @@ export default function LayerPanel({
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as { layerId: string };
       const layer = layerByIdRef.current.get(detail.layerId);
-      if (layer) {
-        setEditingLayerId(layer.id);
-        setEditingName(layer.name);
-      }
+      if (layer) beginEditing(layer.id, layer.name);
     };
     window.addEventListener("layer-rename-start", handler);
     return () => window.removeEventListener("layer-rename-start", handler);
-  }, []);
+  }, [beginEditing]);
 
   // ── External selection → panel sync ───────────────────────────────────────
   // A selection made elsewhere (canvas click, keyboard, rubber band) has to
@@ -634,11 +705,13 @@ export default function LayerPanel({
       if (!currentParentId) break;
       const parent = layerById.get(currentParentId);
       if (!parent) break;
-      // Check if this parent has a next sibling (so the line continues)
+      // Check if this parent has a sibling rendered below it (so the line
+      // continues). Rows list siblings in reverse document order, so the row
+      // below is the *previous* sibling in the array.
       const grandparentId = parent.parentId ?? null;
       const siblings = childrenMap.get(grandparentId) ?? [];
       const parentIndex = siblings.indexOf(parent.id);
-      const hasNextSibling = parentIndex >= 0 && parentIndex < siblings.length - 1;
+      const hasNextSibling = parentIndex > 0;
       if (hasNextSibling) {
         lines.push(
           <div

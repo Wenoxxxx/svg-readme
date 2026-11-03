@@ -298,28 +298,20 @@ export function duplicateLayersWithChildren(
   return { duplicatedLayers, duplicatedProperties, duplicatedTopIds };
 }
 
-export function reorderSelectedLayers(
-  layers: LayerType[],
-  selectedLayerIds: string[],
+/** Reorder one sibling list (back-to-front) for the given direction. */
+function reorderSiblings(
+  siblings: LayerType[],
+  selected: ReadonlySet<string>,
   direction: ReorderDirection,
 ): LayerType[] {
-  const selected = new Set(selectedLayerIds);
-  if (selected.size === 0) return layers;
-
   if (direction === "front") {
-    return [...layers.filter((layer) => !selected.has(layer.id)), ...layers.filter((layer) => selected.has(layer.id))];
+    return [...siblings.filter((layer) => !selected.has(layer.id)), ...siblings.filter((layer) => selected.has(layer.id))];
   }
-
   if (direction === "back") {
-    return [...layers.filter((layer) => selected.has(layer.id)), ...layers.filter((layer) => !selected.has(layer.id))];
+    return [...siblings.filter((layer) => selected.has(layer.id)), ...siblings.filter((layer) => !selected.has(layer.id))];
   }
 
-  const result = [...layers];
-  const selectedIndices = result
-    .map((layer, index) => (selected.has(layer.id) ? index : -1))
-    .filter((index) => index >= 0);
-  if (selectedIndices.length === 0) return layers;
-
+  const result = [...siblings];
   if (direction === "forward") {
     for (let index = result.length - 2; index >= 0; index -= 1) {
       if (!selected.has(result[index].id) || selected.has(result[index + 1].id)) continue;
@@ -333,6 +325,46 @@ export function reorderSelectedLayers(
     [result[index - 1], result[index]] = [result[index], result[index - 1]];
   }
   return result;
+}
+
+/**
+ * Change the z-order of the selected layers.
+ *
+ * Z-order is sibling order: the renderer walks the tree and paints each
+ * parent's children in array order. So every move happens *among siblings*
+ * only — a layer never jumps over a layer that belongs to another group. Each
+ * parent's children are reordered on their own and written back into the
+ * array slots that parent's children already occupied, which leaves every
+ * other layer (and every descendant, linked by `parentId`) where it was.
+ */
+export function reorderSelectedLayers(
+  layers: LayerType[],
+  selectedLayerIds: string[],
+  direction: ReorderDirection,
+): LayerType[] {
+  const selected = new Set(selectedLayerIds);
+  if (selected.size === 0) return layers;
+
+  const slotsByParent = new Map<string | null, number[]>();
+  layers.forEach((layer, index) => {
+    const parentId = layer.parentId ?? null;
+    const slots = slotsByParent.get(parentId);
+    if (slots) slots.push(index);
+    else slotsByParent.set(parentId, [index]);
+  });
+
+  const result = [...layers];
+  let changed = false;
+  for (const slots of slotsByParent.values()) {
+    const siblings = slots.map((index) => layers[index]);
+    if (!siblings.some((layer) => selected.has(layer.id))) continue;
+    const reordered = reorderSiblings(siblings, selected, direction);
+    slots.forEach((slot, k) => {
+      if (result[slot] !== reordered[k]) changed = true;
+      result[slot] = reordered[k];
+    });
+  }
+  return changed ? result : layers;
 }
 
 /**

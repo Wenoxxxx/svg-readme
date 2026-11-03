@@ -25,6 +25,7 @@ export type LayerCommandId =
   | "pasteToReplace"
   | "duplicate"
   | "delete"
+  | "selectMatching"
   // ── Ordering ──────────────────────────────────────────────────────────────
   | "bringForward"
   | "bringToFront"
@@ -40,6 +41,7 @@ export type LayerCommandId =
   | "outlineStroke"
   // ── Component ─────────────────────────────────────────────────────────────
   | "createComponent"
+  | "detachInstance"
   // ── State ─────────────────────────────────────────────────────────────────
   | "toggleVisibility"
   | "toggleLock"
@@ -49,7 +51,8 @@ export type LayerCommandId =
   // ── "Copy/Paste as" submenu ───────────────────────────────────────────────
   | "copyAsPng"
   | "copyAsSvg"
-  // ── Not in the reference menu; still runnable ─────────────────────────────
+  | "copyAsCss"
+  // ── Structure (ungroup) + Boolean submenu ────────────────────────────────
   | "ungroup"
   | "booleanUnion"
   | "booleanSubtract"
@@ -135,6 +138,11 @@ export const LAYER_COMMAND_DEFINITIONS: readonly LayerCommandDefinition[] = [
     shortcut: "Backspace",
     enabled: (c) => c.canDelete,
   },
+  {
+    id: "selectMatching",
+    label: "Select matching layers",
+    enabled: (c) => c.canSelectMatching,
+  },
   // ── Ordering ──────────────────────────────────────────────────────────────
   {
     id: "bringForward",
@@ -211,6 +219,12 @@ export const LAYER_COMMAND_DEFINITIONS: readonly LayerCommandDefinition[] = [
     accent: true,
     enabled: (c) => c.canCreateComponent,
   },
+  {
+    id: "detachInstance",
+    label: "Detach instance",
+    shortcut: "Mod+Alt+B",
+    enabled: (c) => c.canDetachInstance,
+  },
   // ── State ─────────────────────────────────────────────────────────────────
   // Show/Hide and Lock/Unlock keep their combined label in every state — that
   // is how the reference menu reads, so there is no dynamic wording here.
@@ -239,7 +253,7 @@ export const LAYER_COMMAND_DEFINITIONS: readonly LayerCommandDefinition[] = [
     shortcut: "Shift+V",
     enabled: (c) => c.canFlip,
   },
-  // ── Outside the reference menu ────────────────────────────────────────────
+  // ── Ungroup + boolean operations ─────────────────────────────────────────
   {
     id: "ungroup",
     label: "Ungroup",
@@ -252,6 +266,7 @@ export const LAYER_COMMAND_DEFINITIONS: readonly LayerCommandDefinition[] = [
   { id: "booleanExclude", label: "Exclude", enabled: (c) => c.canBoolean },
   { id: "copyAsPng", label: "Copy as PNG", enabled: (c) => c.canCopyAsPng },
   { id: "copyAsSvg", label: "Copy as SVG", enabled: (c) => c.canCopyAsPng },
+  { id: "copyAsCss", label: "Copy as CSS", enabled: (c) => c.canCopyAsCss },
 ];
 
 /**

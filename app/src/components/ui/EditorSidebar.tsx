@@ -1,17 +1,23 @@
-import LayerPanel from "../editor-sidebar/LayerPanel";
+import LayerPanel, {
+  type LayerPanelDocumentActions,
+} from "../editor-sidebar/LayerPanel";
 import { layerPanelTheme } from "../editor-sidebar/LayerPanel/theme";
-import { useEditor, type EditorTool } from "../../context/EditorContext";
+import { useEditor } from "../../context/EditorContext";
 
 // ─── Component (local-only: LayerPanel owns state, no backend sync) ──────────
 
 interface EditorSidebarProps {
-  /** @deprecated Tool selection now handled by TopToolbar; kept for backwards compat */
-  onToolSelect?: (tool: EditorTool) => void;
   onLayerContextAction?: (actionId: string, layerId: string) => void;
+  /**
+   * Document-level callbacks (history, delete, add) owned by the editor page.
+   * Threaded through so every panel mutation is undoable.
+   */
+  layerPanelActions?: LayerPanelDocumentActions;
 }
 
 export default function EditorSidebar({
   onLayerContextAction,
+  layerPanelActions,
 }: EditorSidebarProps) {
   const {
     layers,
@@ -33,6 +39,7 @@ export default function EditorSidebar({
         onSelectionChange={setSelection}
         onClearSelection={clearSelection}
         clipboardCount={clipboardLayerCount}
+        {...layerPanelActions}
       />
     </aside>
   );

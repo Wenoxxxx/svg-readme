@@ -85,6 +85,11 @@ export interface LayerDropTarget {
  * source next to it; `make-child` appends to the target's children. The index
  * is computed against the sibling list *without* the source, because moving a
  * layer removes it before it is re-inserted.
+ *
+ * The panel lists siblings frontmost-first (reverse document order), so a
+ * *visual* "above" means "in front of" the target — the slot right after it in
+ * document order — and "below" means the slot the target occupies. Make-child
+ * appends at the end of the document order, i.e. the top row of the group.
  */
 export function resolveDropTarget(options: {
   sourceId: string;
@@ -123,6 +128,6 @@ export function resolveDropTarget(options: {
 
   return {
     parentId,
-    index: instruction.type === "reorder-below" ? slot + 1 : slot,
+    index: instruction.type === "reorder-above" ? slot + 1 : slot,
   };
 }
