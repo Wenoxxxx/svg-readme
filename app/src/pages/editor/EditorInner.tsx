@@ -125,7 +125,7 @@ export function EditorInner() {
   }, [layers, elementProperties, selectedLayerIds, frameSize]);
 
   // ── Extracted hooks ──────────────────────────────────────────────────────
-  const { history, setHistory, saveToHistory, handleUndo, handleRedo } =
+  const { history, setHistory, saveToHistory, checkpoint, handleUndo, handleRedo } =
     useEditorHistory({ documentRef, setLayers, setElementProperties, setSelectedLayerIds, setSelectedLayerId, setFrameSize });
 
   const {
@@ -440,7 +440,7 @@ export function EditorInner() {
   // ── Bulk property updates for multi-selections (B10) ─────────────────────
   const handleBulkUpdateProperties = useCallback((updates: Partial<ElementProperties>) => {
     if (selectedLayerIds.length === 0) return;
-    saveToHistory();
+    checkpoint(`bulk:${selectedLayerIds.join(",")}:${Object.keys(updates).sort().join(",")}`);
     setElementProperties((prev) => {
       const next = { ...prev };
       for (const id of selectedLayerIds) {
@@ -494,7 +494,7 @@ export function EditorInner() {
       }
       return next;
     });
-  }, [selectedLayerIds, saveToHistory, setElementProperties]);
+  }, [selectedLayerIds, checkpoint, setElementProperties]);
 
   // ── Resize ────────────────────────────────────────────────────────────────
   const handleResizeElement = useCallback((id: string, x: number, y: number, width: number, height: number) => {
@@ -612,6 +612,8 @@ export function EditorInner() {
 
   // ── Update properties ────────────────────────────────────────────────────
   const handleUpdateProperties = useCallback((id: string, updates: Partial<ElementProperties>) => {
+    // Every inspector edit is undoable; bursts on the same field coalesce.
+    checkpoint(`props:${id}:${Object.keys(updates).sort().join(",")}`);
     setElementProperties((prev) => {
       const existing = prev[id];
       if (!existing) return prev;
@@ -683,7 +685,7 @@ export function EditorInner() {
       }
       return { ...prev, [id]: { ...existing, ...updates } as ElementProperties };
     });
-  }, [setElementProperties]);
+  }, [checkpoint, setElementProperties]);
 
   // ── Selection handlers ───────────────────────────────────────────────────
   const handleSelectLayer = useCallback((id: string | null) => {
