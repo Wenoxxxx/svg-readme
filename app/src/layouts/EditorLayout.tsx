@@ -24,6 +24,10 @@ interface EditorLayoutProps {
   elementProperties?: Record<string, ElementProperties>;
   onUpdateProperties?: (id: string, updates: Partial<ElementProperties>) => void;
   onBulkUpdateProperties?: (updates: Partial<ElementProperties>) => void;
+  /** Per-layer updates applied as one undo step (multi-select bounds, flips). */
+  onUpdateMany?: (updates: Record<string, Partial<ElementProperties>>) => void;
+  /** Coalesced undo checkpoint (same key within 1s merges). */
+  onCheckpoint?: (key: string) => void;
   onPropertiesStart?: () => void;
   /** Fired before a canvas (frame) resize so the change lands in undo history. */
   onCanvasResizeStart?: () => void;
@@ -55,6 +59,8 @@ export default function EditorLayout({
   elementProperties,
   onUpdateProperties,
   onBulkUpdateProperties,
+  onUpdateMany,
+  onCheckpoint,
   onPropertiesStart,
   onCanvasResizeStart,
   onMoveElement,
@@ -142,6 +148,8 @@ export default function EditorLayout({
           elementProperties={elementProperties}
           onUpdateProperties={onUpdateProperties}
           onBulkUpdateProperties={onBulkUpdateProperties}
+          onUpdateMany={onUpdateMany}
+          onCheckpoint={onCheckpoint}
           onPropertiesStart={onPropertiesStart}
           onCanvasResizeStart={onCanvasResizeStart}
           onMoveElement={onMoveElement}
