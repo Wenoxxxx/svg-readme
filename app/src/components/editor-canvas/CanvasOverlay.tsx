@@ -183,18 +183,21 @@ export default function CanvasOverlay({
     }
     return true;
   };
+  // One SCREEN pixel in world units: handles, the rotate knob offset and the
+  // overlay stroke stay the same on-screen size at every zoom level.
+  const px = 1 / (viewport.zoom > 0 && Number.isFinite(viewport.zoom) ? viewport.zoom : 1);
   const renderHandle = (
     hx: number,
     hy: number,
     handleName: "tl" | "tc" | "tr" | "ml" | "mr" | "bl" | "bc" | "br",
   ) => {
     if (!isHandleVisible(handleName)) return null;
-    const visualSize = 6;
-    const hitSize = 14;
+    const visualSize = 6 * px;
+    const hitSize = 14 * px;
     const cursor = getHandleCursor(handleName);
     return (
       <g key={handleName} className="resize-handle-group">
-        <rect x={hx - visualSize / 2} y={hy - visualSize / 2} width={visualSize} height={visualSize} fill="white" stroke="#3b82f6" strokeWidth={1.5} className="pointer-events-none" />
+        <rect x={hx - visualSize / 2} y={hy - visualSize / 2} width={visualSize} height={visualSize} fill="white" stroke="#3b82f6" strokeWidth={1.5 * px} className="pointer-events-none" />
         <rect x={hx - hitSize / 2} y={hy - hitSize / 2} width={hitSize} height={hitSize} fill="transparent" style={{ cursor }} onMouseDown={(e) => handleResizeMouseDown(e, handleName)} />
       </g>
     );
@@ -244,23 +247,23 @@ export default function CanvasOverlay({
             height={overlayProps.height}
             fill="none"
             stroke="#3b82f6"
-            strokeWidth={1}
+            strokeWidth={px}
             className="pointer-events-none"
           />
           <line
             x1={overlayProps.x + overlayProps.width / 2}
             y1={overlayProps.y}
             x2={overlayProps.x + overlayProps.width / 2}
-            y2={overlayProps.y - 24}
+            y2={overlayProps.y - 24 * px}
             stroke="#3b82f6"
-            strokeWidth={1}
+            strokeWidth={px}
             className="pointer-events-none"
           />
-          <circle cx={overlayProps.x + overlayProps.width / 2} cy={overlayProps.y - 24} r={4} fill="white" stroke="#3b82f6" strokeWidth={1.5} className="pointer-events-none" />
+          <circle cx={overlayProps.x + overlayProps.width / 2} cy={overlayProps.y - 24 * px} r={4 * px} fill="white" stroke="#3b82f6" strokeWidth={1.5 * px} className="pointer-events-none" />
           <circle
             cx={overlayProps.x + overlayProps.width / 2}
-            cy={overlayProps.y - 24}
-            r={10}
+            cy={overlayProps.y - 24 * px}
+            r={10 * px}
             fill="transparent"
             style={{ cursor: ROTATE_CURSOR }}
             onMouseDown={handleRotateMouseDown}

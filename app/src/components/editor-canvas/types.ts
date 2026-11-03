@@ -67,6 +67,9 @@ export interface DragState {
    *  When present, dragging moves every layer in this map by the delta.
    *  Only populated when the clicked layer is part of a multi-selection. */
   multiStartPositions?: Record<string, { x: number; y: number }>;
+  /** Alt+drag (Figma): duplicate the dragged selection on the first move and
+   *  drag the copies instead of the originals. Cleared once duplicated. */
+  duplicateOnMove?: boolean;
 }
 
 /** State for dragging to create a text box */
@@ -119,6 +122,11 @@ export interface ResizeState {
   selectionIds?: string[];
   initialBoxes?: Record<string, { x: number; y: number; width: number; height: number }>;
   initialSelectionBounds?: { x: number; y: number; width: number; height: number };
+  /** Element rotation (degrees) at drag start — pointer deltas are converted
+   *  into the element's local frame so rotated elements resize correctly. */
+  rotation?: number;
+  /** Lines may collapse to 0 height/width (horizontal / vertical lines). */
+  isLine?: boolean;
 }
 
 /** State for rotating an element (or a multi-selection as a unit, B3) */
@@ -135,6 +143,9 @@ export interface RotateState {
    *  same angle delta is applied to every element around the selection center. */
   selectionIds?: string[];
   initialRotations?: Record<string, number>;
+  /** Multi-select rotate: each element's pre-drag position and box center, so
+   *  elements orbit the selection center instead of spinning in place. */
+  initialPositions?: Record<string, { x: number; y: number; cx: number; cy: number }>;
 }
 
 /** State for pen tool path building (click-to-place).
@@ -187,7 +198,14 @@ export interface CanvasProps {
     y: number,
     width: number,
     height: number,
+    /** Extra creation data. Lines carry their drag direction so a diagonal
+     *  line keeps its orientation instead of collapsing to horizontal. */
+    extra?: { lineDirection?: "horizontal" | "down" | "up" },
   ) => void;
+  /** Alt+drag (Figma): duplicate `ids` in place (no offset, no history entry —
+   *  the move already saved one) and return the old→new id map so the drag
+   *  continues on the copies. Return null when nothing was duplicated. */
+  onDuplicateForDrag?: (ids: string[]) => Record<string, string> | null;
   /** Called when user finishes drawing a path (pen tool) */
   onCreatePath: (props: Omit<PathElementProperties, "type">) => void;
   /** Called when the paint bucket tool paints a layer with the current color. */

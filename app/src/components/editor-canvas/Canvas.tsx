@@ -34,6 +34,7 @@ export default function Canvas({
   elementProperties,
   onCreateText,
   onCreateShape,
+  onDuplicateForDrag,
   onCreatePath,
   onPaintLayer,
   paintColor,
@@ -114,6 +115,7 @@ export default function Canvas({
     selectedId,
     selectedProps,
     isSpaceHeld,
+    lockedLayerIds,
   } = useCanvasInteraction({
     activeTool,
     selectedShapeKind,
@@ -137,6 +139,7 @@ export default function Canvas({
     onRotateElement,
     onCreateText,
     onCreateShape,
+    onDuplicateForDrag,
     onPaintLayer,
     paintColor,
     onEditText,
@@ -196,8 +199,12 @@ export default function Canvas({
       selectedProps.type === "text");
   // Hide resize/rotate handles while editing text — they should only appear
   // after the user commits (blur / Enter outside) — see TextOverlay comments.
+  // Locked layers are not transformable from the canvas: no handles.
+  const selectionLocked = selectedId
+    ? lockedLayerIds.has(selectedId)
+    : selectedLayerIds.some((id) => lockedLayerIds.has(id));
   const showResizeOverlay =
-    !isEditingText && (tool.showResizeOverlay ?? false) && (canShowForSingle || multiBounds !== null);
+    !isEditingText && !selectionLocked && (tool.showResizeOverlay ?? false) && (canShowForSingle || multiBounds !== null);
 
   // ── Rotate transform for selected element overlay ────────────────────────
   // For text, use the visual bounding box (measured via textMeasure) so the overlay hugs the rendered text,
@@ -268,9 +275,32 @@ export default function Canvas({
       if (svg && event.target instanceof Node && svg.contains(event.target)) return;
       handleMouseUp();
     };
+    // Keep drags / resizes / marquees / pans updating while the pointer is
+    // outside the <svg> (the svg's own onMouseMove covers the inside).
+    const moveHandler = (event: MouseEvent) => {
+      const svg = svgRef.current;
+      if (svg && event.target instanceof Node && svg.contains(event.target)) return;
+      // Tool handlers only read clientX/Y + modifier keys, which a native
+      // MouseEvent provides identically.
+      handleMouseMove(event as unknown as React.MouseEvent);
+    };
     window.addEventListener("mouseup", handler);
-    return () => window.removeEventListener("mouseup", handler);
-  }, [state, handleMouseUp]);
+    window.addEventListener("mousemove", moveHandler);
+    return () => {
+      window.removeEventListener("mouseup", handler);
+      window.removeEventListener("mousemove", moveHandler);
+    };
+  }, [state, handleMouseUp, handleMouseMove]);
+
+  // ── Native, non-passive wheel listener ─────────────────────────────
+  // React registers onWheel as passive, so preventDefault() there cannot stop
+  // the browser's own ctrl+wheel / pinch page zoom.
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    svg.addEventListener("wheel", handleWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", handleWheel);
+  }, [handleWheel]);
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (
@@ -297,7 +327,6 @@ export default function Canvas({
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={() => setHoveredLayerId(null)}
-        onWheel={handleWheel}
         onDoubleClick={handleDoubleClick}
         onContextMenu={onCanvasContextMenu}
       >
@@ -313,7 +342,7 @@ export default function Canvas({
           elementProperties={elementProperties}
           selectedVertex={selectedVertex}
           activeTool={activeTool}
-          hoveredLayerId={hoveredLayerId}
+          hoveredLayerId={hoveredLayerId && !lockedLayerIds.has(hoveredLayerId) ? hoveredLayerId : null}
           editingLayerId={editingLayerId}
           editingContent={editingContent}
           isEditingText={isEditingText}

@@ -14,6 +14,28 @@ interface UseCanvasVertexEditingParams {
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 /**
+ * Map a world-space pointer into a rotated element's LOCAL (unrotated) frame.
+ * Path points are stored unrotated and the element is drawn with
+ * rotate(rotation, cx, cy) about its box center, so the pointer must be
+ * inverse-rotated about that same center before it becomes a point.
+ */
+export function worldToElementLocal(
+  point: { x: number; y: number },
+  props: { x: number; y: number; width: number; height: number; rotation?: number },
+): { x: number; y: number } {
+  const rotation = props.rotation ?? 0;
+  if (!rotation || !Number.isFinite(rotation)) return point;
+  const cx = props.x + props.width / 2;
+  const cy = props.y + props.height / 2;
+  const rad = (-rotation * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const dx = point.x - cx;
+  const dy = point.y - cy;
+  return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
+}
+
+/**
  * Manages path vertex editing listeners: drag individual vertices,
  * drag bezier handles, and the global mousemove that dispatches events
  * to EditorInner for state updates.
@@ -116,8 +138,9 @@ export function useCanvasVertexEditing({
             }),
           );
         }
+        const local = worldToElementLocal(world, props);
         window.dispatchEvent(new CustomEvent("path-vertex-move", {
-          detail: { elementId: vd.elementId, vertexIndex: vd.vertexIndex, x: world.x, y: world.y },
+          detail: { elementId: vd.elementId, vertexIndex: vd.vertexIndex, x: local.x, y: local.y },
         }));
       }
 
@@ -138,8 +161,7 @@ export function useCanvasVertexEditing({
             elementId: hd.elementId,
             vertexIndex: hd.vertexIndex,
             side: hd.side,
-            x: world.x,
-            y: world.y,
+            ...worldToElementLocal(world, props),
           },
         }));
       }

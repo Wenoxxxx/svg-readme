@@ -1,7 +1,7 @@
 import type { TextDragState, ShapeDragState, RubberBandState, PathDragState } from "./types";
 import { pointsToSvgD, mirrorPoint } from "../../lib/editor/pathUtils";
 import { getEffectiveHandles } from "../../lib/editor-tools/PenTool";
-import { trianglePath, starPath, hexagonPath } from "./shapeHelpers";
+import { trianglePath, starPath, hexagonPath, lineFromDrag } from "./shapeHelpers";
 
 interface DragPreviewsProps {
   rubberBandState: RubberBandState | null;
@@ -63,10 +63,11 @@ export default function DragPreviews({
         }
 
         if (kind === "line") {
+          const line = lineFromDrag(startX, startY, currentX, currentY, shiftKey);
           return (
             <line
-              x1={startX} y1={startY}
-              x2={currentX} y2={currentY}
+              x1={line.x1} y1={line.y1}
+              x2={line.x2} y2={line.y2}
               stroke="#8b5cf6"
               strokeWidth={2}
               strokeDasharray="4 2"

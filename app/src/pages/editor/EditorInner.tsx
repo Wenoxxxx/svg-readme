@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useMemo, useRef, useState } from "react";
-import { clampZoom } from "../../lib/editor/geometry";
+import { clampZoom, fitBoundsToViewport, zoomAroundCenter, getSelectionBounds, type Viewport } from "../../lib/editor/geometry";
+import { getElementBoundingBox } from "../../components/editor-canvas/boundingBox";
 import { startPan, updatePan } from "../../lib/editor-tools/PanZoomHandler";
 import ViewportControls from "../../components/editor-canvas/ViewportControls";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
@@ -367,6 +368,49 @@ export function EditorInner() {
     setActiveTool("move");
   }, [editingLayerId, editingContent, setLayers, setElementProperties, setIsEditingText, setSelectedLayerId, setActiveTool, saveToHistory]);
 
+  // ── User-driven viewport changes ───────────────────────────────────────────────────
+  // Once the user zooms or pans, workspace resizes stop auto-fitting.
+  const userViewportChangedRef = useRef(false);
+  const setViewportByUser = useCallback((next: React.SetStateAction<Viewport>) => {
+    userViewportChangedRef.current = true;
+    setViewport(next);
+  }, []);
+  // fitViewport is declared further down; the shortcut reaches it via a ref.
+  const fitViewportRef = useRef<() => void>(() => {});
+  const zoomCommands = useMemo(() => {
+    const workspaceSize = () => ({
+      w: workspaceRef.current?.clientWidth ?? 0,
+      h: workspaceRef.current?.clientHeight ?? 0,
+    });
+    return {
+      fit: () => fitViewportRef.current(),
+      toSelection: () => {
+        const items = selectedLayerIds
+          .map((id) => {
+            const props = elementProperties[id];
+            return props ? { id, x: props.x, y: props.y, bounds: getElementBoundingBox(props) } : null;
+          })
+          .filter((item): item is NonNullable<typeof item> => item !== null);
+        const bounds = items.length > 0 ? getSelectionBounds(items) : null;
+        const { w, h } = workspaceSize();
+        if (!bounds || !w || !h) return;
+        setViewportByUser(fitBoundsToViewport(bounds, w, h));
+      },
+      actualSize: () => {
+        const { w, h } = workspaceSize();
+        setViewportByUser(
+          w && h
+            ? { zoom: 1, panX: (w - frameSize.width) / 2, panY: (h - frameSize.height) / 2 }
+            : { zoom: 1, panX: 0, panY: 0 },
+        );
+      },
+      zoomBy: (factor: number) => {
+        const { w, h } = workspaceSize();
+        setViewportByUser((current) => zoomAroundCenter(current, current.zoom * factor, w, h));
+      },
+    };
+  }, [selectedLayerIds, elementProperties, frameSize, setViewportByUser]);
+
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useKeyboardShortcuts({
     isEditingRef, handleCommitText, handleUndo, handleRedo,
@@ -378,7 +422,8 @@ export function EditorInner() {
     handleSmartDelete: layerOps.handleSmartDelete,
     setActiveTool, selectedShapeKind, setSelectedShapeKind, activeTool,
     selectedLayerId, selectedLayerIds, setSelectedLayerId, setSelectedLayerIds,
-    setViewport, setGridEnabled,
+    setViewport: setViewportByUser, setGridEnabled,
+    zoomCommands,
     onMoveStart: handleMoveStart,
     onMoveElement: handleMoveElement,
     handleSave,
@@ -438,13 +483,14 @@ export function EditorInner() {
   }, [elementProperties, layers, setIsEditingText, setSelectedLayerId, setSelectedLayerIds]);
 
   // ── Create shape element ─────────────────────────────────────────────────
-  const handleCreateShape = useCallback((kind: ShapeKind, x: number, y: number, width: number, height: number) => {
+  const handleCreateShape = useCallback((kind: ShapeKind, x: number, y: number, width: number, height: number, extra?: { lineDirection?: ShapeElementProperties["lineDirection"] }) => {
     const tempId = `shape-${Date.now()}`;
     const kindName = kind.charAt(0).toUpperCase() + kind.slice(1);
     const newLayer: LayerType = { id: tempId, name: kindName, type: "shape", locked: false, visible: true, active: true };
     const newProps: ShapeElementProperties = {
       type: "shape", kind, x, y, width, height, fill: "#8b5cf6", stroke: "rgba(255,255,255,0.2)", strokeWidth: 1,
       cornerRadius: kind === "rect" ? 8 : undefined, opacity: 1,
+      ...(kind === "line" && extra?.lineDirection ? { lineDirection: extra.lineDirection } : {}),
     };
     saveToHistory();
     selectLayer(tempId, false);
@@ -794,14 +840,21 @@ export function EditorInner() {
     const availableHeight = Math.max(workspace.clientHeight - padding, 1);
     const zoom = clampZoom(Math.min(availableWidth / frameSize.width, availableHeight / frameSize.height));
     setViewport({ zoom, panX: (workspace.clientWidth - frameSize.width * zoom) / 2, panY: (workspace.clientHeight - frameSize.height * zoom) / 2 });
+    // Back in "fit" mode: workspace resizes keep the frame fitted again.
+    userViewportChangedRef.current = false;
   }, [frameSize]);
+  useEffect(() => { fitViewportRef.current = fitViewport; }, [fitViewport]);
 
   useEffect(() => {
     if (!isProjectActive) return;
     fitViewport();
     const workspace = workspaceRef.current;
     if (!workspace || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(fitViewport);
+    // Re-fit on workspace resize only until the user zooms or pans (or the
+    // frame size changes, which re-runs this effect and fits again).
+    const observer = new ResizeObserver(() => {
+      if (!userViewportChangedRef.current) fitViewport();
+    });
     observer.observe(workspace);
     return () => observer.disconnect();
   }, [fitViewport, isProjectActive]);
@@ -831,9 +884,9 @@ export function EditorInner() {
       const pan = workspacePanStateRef.current;
       if (!pan) return;
       e.preventDefault();
-      setViewport(updatePan(pan, e.clientX, e.clientY, viewport));
+      setViewportByUser(updatePan(pan, e.clientX, e.clientY, viewport));
     },
-    [viewport, setViewport],
+    [viewport, setViewportByUser],
   );
 
   const handleWorkspaceMouseUp = useCallback(() => {
@@ -1053,7 +1106,8 @@ export function EditorInner() {
             editingContent={editingContent} editingLayerId={editingLayerId}
             onEditingContentChange={setEditingContent}
             onCommitText={handleCommitText}
-            viewport={viewport} onViewportChange={setViewport}
+            viewport={viewport} onViewportChange={setViewportByUser}
+            onDuplicateForDrag={layerOps.handleDuplicateForDrag}
             gridEnabled={gridEnabled} snapEnabled={snapEnabled} gridSize={10}
             previewAnimation={previewAnimation} scrubTime={scrubTime}
             selectedVertex={selectedVertex}
@@ -1062,14 +1116,14 @@ export function EditorInner() {
 
         <ViewportControls
           zoom={viewport.zoom} gridEnabled={gridEnabled} snapEnabled={snapEnabled}
-          onZoomIn={() => setViewport((current) => {
+          onZoomIn={() => setViewportByUser((current) => {
             const ws = workspaceRef.current; const wsW = ws?.clientWidth ?? 0; const wsH = ws?.clientHeight ?? 0;
             const newZoom = clampZoom(current.zoom * 1.1);
             if (!wsW || !wsH) return { ...current, zoom: newZoom };
             const wx = (wsW / 2 - current.panX) / current.zoom; const wy = (wsH / 2 - current.panY) / current.zoom;
             return { zoom: newZoom, panX: wsW / 2 - wx * newZoom, panY: wsH / 2 - wy * newZoom };
           })}
-          onZoomOut={() => setViewport((current) => {
+          onZoomOut={() => setViewportByUser((current) => {
             const ws = workspaceRef.current; const wsW = ws?.clientWidth ?? 0; const wsH = ws?.clientHeight ?? 0;
             const newZoom = clampZoom(current.zoom * 0.9);
             if (!wsW || !wsH) return { ...current, zoom: newZoom };
@@ -1079,7 +1133,7 @@ export function EditorInner() {
           onFit={fitViewport}
           onToggleGrid={() => setGridEnabled((e) => !e)}
           onToggleSnap={() => setSnapEnabled((e) => !e)}
-          onZoomTo={(z) => setViewport((current) => {
+          onZoomTo={(z) => setViewportByUser((current) => {
             const ws = workspaceRef.current; const wsW = ws?.clientWidth ?? 0; const wsH = ws?.clientHeight ?? 0;
             const newZoom = clampZoom(z);
             if (!wsW || !wsH) return { ...current, zoom: newZoom };

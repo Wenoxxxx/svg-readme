@@ -54,6 +54,10 @@ export interface ToolEventContext {
 
   /** Whether Alt was held during the mousedown that started the interaction. */
   altKey: boolean;
+
+  /** Layers that are locked (directly or via a locked ancestor group). Locked
+   *  layers are never moved, resized or rotated from the canvas. */
+  lockedLayerIds?: ReadonlySet<string>;
 }
 
 /** State for editing an individual path point in move tool. */
