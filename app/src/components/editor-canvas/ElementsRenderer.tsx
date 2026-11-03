@@ -18,6 +18,7 @@ import { getElementBoundingBox } from "./boundingBox";
 import { trianglePath, starPath, hexagonPath } from "./shapeHelpers";
 import { resolveLayerAnimation } from "./animationPresets";
 import { buildEffectsFilter, effectWrapperAttrs, rectEllipseNodes, shapeOutlineNode } from "../../lib/export/visualEffects";
+import { sanitizeStyleText } from "../../lib/export/xml";
 import { svgNodeToReact } from "./svgNodeReact";
 
 // ─── Element Renderers ───────────────────────────────────────────────────────
@@ -682,7 +683,7 @@ export default function ElementsRenderer({
       const resolved = resolveLayerAnimation(layer.id, anim);
       if (resolved.keyframesCSS && !seenNames.has(resolved.name)) {
         seenNames.add(resolved.name);
-        animationKeyframesCSS.push(resolved.keyframesCSS);
+        animationKeyframesCSS.push(sanitizeStyleText(resolved.keyframesCSS));
       }
     }
   }
