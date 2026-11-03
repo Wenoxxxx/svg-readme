@@ -422,3 +422,42 @@ export function reorderChild(
     ...remaining.slice(insertAt),
   ];
 }
+
+export interface DeleteLayersResult {
+  updatedLayers: LayerType[];
+  updatedProperties: Record<string, ElementProperties>;
+  /** Every removed id: the deletable targets plus all their descendants. */
+  deletedIds: string[];
+}
+
+/**
+ * The single delete path (menu Delete, Backspace, layer-row trash).
+ *
+ * Locked targets are skipped rather than blocking the whole operation, so a
+ * mixed selection deletes its unlocked layers. Each deleted layer takes its
+ * whole subtree and the element properties of every removed id with it.
+ * Returns null when nothing is deletable.
+ */
+export function deleteLayers(
+  layers: LayerType[],
+  elementProperties: Record<string, ElementProperties>,
+  targetIds: readonly string[],
+): DeleteLayersResult | null {
+  const byId = new Map(layers.map((layer) => [layer.id, layer]));
+  const doomed = new Set<string>();
+  for (const id of targetIds) {
+    const layer = byId.get(id);
+    if (!layer || layer.locked) continue;
+    doomed.add(id);
+    for (const child of collectDescendantIds(layers, id)) doomed.add(child);
+  }
+  if (doomed.size === 0) return null;
+
+  const updatedProperties = { ...elementProperties };
+  for (const id of doomed) delete updatedProperties[id];
+  return {
+    updatedLayers: layers.filter((layer) => !doomed.has(layer.id)),
+    updatedProperties,
+    deletedIds: [...doomed],
+  };
+}
