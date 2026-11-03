@@ -2,7 +2,7 @@ import type { ToolEventContext, ToolInteractionState, ToolHandler } from "./type
 import { mirrorPoint } from "../editor/pathUtils";
 import type { PathVertexHandle } from "../editor/pathUtils";
 
-const CLOSE_THRESHOLD = 8; // px — distance within which clicking near start closes the path
+export const CLOSE_THRESHOLD = 8; // screen px — distance within which clicking near start closes the path
 /** Drag distance (px) beyond which a click-drag places a smooth bezier handle instead of a corner. */
 const HANDLE_DRAG_THRESHOLD = 4;
 
@@ -230,6 +230,9 @@ export function addOrCloseVertex(
   state: ToolInteractionState,
   x: number,
   y: number,
+  /** Close distance in WORLD units. Callers pass CLOSE_THRESHOLD / zoom so the
+   *  snap radius stays constant in screen pixels. */
+  closeThreshold: number = CLOSE_THRESHOLD,
 ): Partial<ToolInteractionState> {
   const ps = state.pathDragState;
   if (!ps || !ps.isBuilding) return {};
@@ -238,7 +241,7 @@ export function addOrCloseVertex(
   const distToStart = Math.hypot(x - start[0], y - start[1]);
 
   // Close path: click near start with >= 2 points
-  if (ps.points.length >= 2 && distToStart <= CLOSE_THRESHOLD) {
+  if (ps.points.length >= 2 && distToStart <= closeThreshold) {
     return {
       pathDragState: {
         ...ps,

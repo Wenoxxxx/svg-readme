@@ -35,8 +35,59 @@ export function updatePan(
   };
 }
 
+/** The subset of a WheelEvent the canvas wheel handler needs. */
+export interface WheelInput {
+  deltaX: number;
+  deltaY: number;
+  /** 0 = pixels, 1 = lines, 2 = pages. */
+  deltaMode?: number;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
+  clientX: number;
+  clientY: number;
+}
+
+/** Max |deltaY| (px) honoured per wheel event when zooming — keeps a mouse
+ *  wheel notch (~100px) to a ~1.28× step while trackpad pinch stays smooth. */
+const MAX_ZOOM_DELTA = 25;
+const ZOOM_SENSITIVITY = 0.01;
+
+/**
+ * Figma-style wheel handling.
+ * - Ctrl/Cmd + wheel, and trackpad pinch (browsers report it as ctrl+wheel),
+ *   zooms around the cursor, proportionally to deltaY.
+ * - Plain wheel / two-finger scroll pans; Shift + wheel pans horizontally.
+ * `svgRect` is the canvas <svg>'s client rect (already offset by the pan).
+ */
+export function computeWheelViewport(
+  event: WheelInput,
+  viewport: Viewport,
+  svgRect: { left: number; top: number },
+): Viewport {
+  const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 400 : 1;
+  const deltaX = event.deltaX * unit;
+  const deltaY = event.deltaY * unit;
+
+  if (event.ctrlKey || event.metaKey) {
+    const pointer = {
+      x: viewport.panX + event.clientX - svgRect.left,
+      y: viewport.panY + event.clientY - svgRect.top,
+    };
+    const clamped = Math.max(-MAX_ZOOM_DELTA, Math.min(MAX_ZOOM_DELTA, deltaY));
+    const nextZoom = clampZoom(viewport.zoom * Math.exp(-clamped * ZOOM_SENSITIVITY));
+    return zoomAtPoint(viewport, pointer, nextZoom);
+  }
+
+  if (event.shiftKey && deltaX === 0) {
+    return { ...viewport, panX: viewport.panX - deltaY };
+  }
+  return { ...viewport, panX: viewport.panX - deltaX, panY: viewport.panY - deltaY };
+}
+
 /**
  * Handle wheel zoom, returning the new viewport.
+ * @deprecated Use computeWheelViewport (pans on plain wheel, zooms on ctrl/pinch).
  */
 export function handleZoom(
   event: React.WheelEvent<SVGSVGElement>,

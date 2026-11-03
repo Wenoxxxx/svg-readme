@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import {
   MIN_TEXTBOX_SIZE,
@@ -19,6 +19,7 @@ import {
   updatePendingHandle,
   commitPendingHandle,
   closePathFromDoubleClick,
+  CLOSE_THRESHOLD,
 } from "../../lib/editor-tools/PenTool";
 import {
   type ToolEventContext,
@@ -30,18 +31,20 @@ import {
   computeMultiDragDeltas,
 } from "../../lib/editor-tools/MoveTool";
 import {
-  updateResize,
+  updateResizeWorld,
+  snapResizeBox,
 } from "../../lib/editor-tools/ResizeHandler";
 import {
   updateRotation,
-  computeRotationDelta,
+  computeMultiRotation,
 } from "../../lib/editor-tools/RotateHandler";
 import {
   startPan,
   updatePan,
-  handleZoom,
+  computeWheelViewport,
 } from "../../lib/editor-tools/PanZoomHandler";
-import { screenToWorld, computeSnapGuides, computeResizeSnapGuides, remapBoxesThroughBounds, type SnapGuideLine } from "../../lib/editor/geometry";
+import { screenToWorld, clampZoom, computeSnapGuides, remapBoxesThroughBounds, sameGuideLines, getLockedLayerIds, type SnapGuideLine } from "../../lib/editor/geometry";
+import { lineFromDrag } from "./shapeHelpers";
 import { mergeState } from "./Canvas/helpers";
 import type { ElementProperties, ShapeKind } from "./ElementsRenderer";
 import type { LayerType } from "../../context/EditorContext";
@@ -73,7 +76,9 @@ export interface UseCanvasInteractionParams {
   onResizeElement?: (id: string, x: number, y: number, width: number, height: number) => void;
   onRotateElement?: (id: string, rotation: number) => void;
   onCreateText: (x: number, y: number, width: number | "auto", height: number) => void;
-  onCreateShape: (kind: ShapeKind, x: number, y: number, width: number, height: number) => void;
+  onCreateShape: CanvasProps["onCreateShape"];
+  /** Alt+drag: duplicate `ids` and return the old→new id map (or null). */
+  onDuplicateForDrag?: CanvasProps["onDuplicateForDrag"];
   onPaintLayer: (layerId: string, color: string) => void;
   paintColor?: string;
   onEditText: (layerId: string) => void;
@@ -115,6 +120,7 @@ export function useCanvasInteraction({
   onRotateElement,
   onCreateText,
   onCreateShape,
+  onDuplicateForDrag,
   onPaintLayer,
   paintColor,
   onEditText,
@@ -129,6 +135,10 @@ export function useCanvasInteraction({
   const moveHistorySavedRef = useRef(false);
   const lastPenClickRef = useRef<{ t: number; x: number; y: number } | null>(null);
   const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
+
+  /** Locked layers (directly or via a locked ancestor) — never hit-testable. */
+  const lockedLayerIds = useMemo(() => getLockedLayerIds(layers), [layers]);
+  const zoom = clampZoom(viewport.zoom);
 
   // Path state refs for pen tool keyboard shortcuts — kept in sync from props (fixes stale-ref bug
   // where Esc/Enter/C and tool-switch finalize never fired, leaving dashed line following cursor).
@@ -158,12 +168,14 @@ export function useCanvasInteraction({
       return false;
     };
     const down = (e: KeyboardEvent) => {
-      if (e.code !== "Space" || e.repeat) return;
+      if (e.code !== "Space") return;
       // Don't hijack space while editing text or typing in an input
       if (isEditingText) return;
       if (isInputFocused()) return;
-      // Prevent page scroll and button activation while holding space for hand tool
+      // Prevent page scroll and button activation while holding space for hand
+      // tool — including auto-repeat keydowns, which would otherwise scroll.
       e.preventDefault();
+      if (e.repeat) return;
       spacePressedRef.current = true;
       setIsSpaceHeld(true);
     };
@@ -217,7 +229,7 @@ export function useCanvasInteraction({
         } else {
           setState((prev) => ({ ...prev, pathDragState: null }));
         }
-      } else if (e.key === "c" || e.key === "C") {
+      } else if ((e.key === "c" || e.key === "C") && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
         const ps = pathStateRef.current;
         if (ps?.isBuilding && ps.points.length >= 3) {
@@ -236,10 +248,18 @@ export function useCanvasInteraction({
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "Tab" || activeTool !== "move") return;
+      if (isEditingText) return;
+      // Never steal Tab from form fields / contenteditable (focus navigation).
+      const target = (e.target instanceof Element ? e.target : null) ?? document.activeElement;
+      if (
+        target instanceof Element &&
+        (target.closest("input, textarea, select, [contenteditable='true'], [contenteditable='']") ||
+          (target instanceof HTMLElement && target.isContentEditable))
+      ) return;
       const point = lastPointerRef.current;
       if (!point) return;
       const candidates = layers
-        .filter((l) => l.visible && elementProperties[l.id])
+        .filter((l) => l.visible && elementProperties[l.id] && !lockedLayerIds.has(l.id))
         .filter((l) => {
           const bb = getElementBoundingBox(elementProperties[l.id]);
           return (
@@ -262,7 +282,7 @@ export function useCanvasInteraction({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [activeTool, layers, elementProperties, selectedLayerIds, onSelectLayer]);
+  }, [activeTool, layers, elementProperties, selectedLayerIds, onSelectLayer, isEditingText, lockedLayerIds]);
 
   // ── Derived selection ────────────────────────────────────────────────────
   const selectedId =
@@ -276,10 +296,12 @@ export function useCanvasInteraction({
   const visibleLayerIds = layers
     .filter((layer) => layer.visible && elementProperties[layer.id])
     .map((layer) => layer.id);
+  /** Visible AND unlocked — the only layers marquee selection may pick. */
+  const selectableLayerIds = visibleLayerIds.filter((id) => !lockedLayerIds.has(id));
 
   // ── Get SVG coords ───────────────────────────────────────────────────────
   const getSVGCoords = useCallback(
-    (e: React.MouseEvent) => {
+    (e: { clientX: number; clientY: number }) => {
       const svg = svgRef.current;
       if (!svg) return { x: e.clientX, y: e.clientY };
       const rect = svg.getBoundingClientRect();
@@ -307,8 +329,10 @@ export function useCanvasInteraction({
       gridSize,
       shiftKey: e.shiftKey,
       altKey: e.altKey,
+      lockedLayerIds,
     }),
     [
+      lockedLayerIds,
       getSVGCoords,
       selectedId,
       selectedLayerIds,
@@ -343,10 +367,11 @@ export function useCanvasInteraction({
         const { x, y } = ctx.worldPoint;
         const now = Date.now();
         const last = lastPenClickRef.current;
+        // Distances are screen-pixel based: divide by zoom to get world units.
         const isDoubleClick =
           !!last &&
           now - last.t < 350 &&
-          Math.hypot(x - last.x, y - last.y) < 10;
+          Math.hypot(x - last.x, y - last.y) < 10 / zoom;
         lastPenClickRef.current = { t: now, x, y };
 
         setState((prev) => {
@@ -358,7 +383,7 @@ export function useCanvasInteraction({
             };
           }
           if (isDoubleClick) return prev;
-          const nextState = { ...prev, ...mergeState(addOrCloseVertex(prev, x, y)) };
+          const nextState = { ...prev, ...mergeState(addOrCloseVertex(prev, x, y, CLOSE_THRESHOLD / zoom)) };
           if (nextState.pathDragState?.isBuilding) {
             const index = nextState.pathDragState.points.length - 1;
             return {
@@ -376,7 +401,7 @@ export function useCanvasInteraction({
       const next = tool.onCanvasMouseDown?.(ctx);
       if (next) setState((prev) => ({ ...prev, ...mergeState(next) }));
     },
-    [activeTool, selectedShapeKind, isEditingText, buildContext, onCommitText, viewport, setState],
+    [activeTool, selectedShapeKind, isEditingText, buildContext, onCommitText, viewport, zoom, setState],
   );
 
   // ── Element mouse down ───────────────────────────────────────────────────

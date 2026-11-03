@@ -60,6 +60,10 @@ export interface ShapeElementProperties {
   strokeLinejoin?: "miter" | "round" | "bevel";
   /** Stroke dash array (e.g. "6 3" = 6px dash, 3px gap). Open Pencil-style dash pattern. */
   strokeDashArray?: string;
+  /** Line shapes only: how the line runs through its box. Undefined (legacy
+   *  documents) = horizontal through the vertical middle; "down" = top-left →
+   *  bottom-right; "up" = bottom-left → top-right. See getLineEndpoints. */
+  lineDirection?: "horizontal" | "down" | "up";
   /** Corner radius for rect shapes. Defaults to 4 when unset. 0 = sharp corners. */
   cornerRadius?: number;
   opacity: number;

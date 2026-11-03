@@ -28,6 +28,8 @@ export const MoveTool: ToolHandler = {
   onElementMouseDown(ctx: ToolEventContext, layerId: string): Partial<ToolInteractionState> | void {
     const props = ctx.elementProperties[layerId];
     if (!props) return undefined;
+    // Locked layers never move on canvas.
+    if (ctx.lockedLayerIds?.has(layerId)) return undefined;
 
     const allSelectedIds: string[] = [];
     if (
@@ -42,7 +44,7 @@ export const MoveTool: ToolHandler = {
       allSelectedIds.length > 1
         ? Object.fromEntries(
             allSelectedIds
-              .filter((id) => ctx.elementProperties[id])
+              .filter((id) => ctx.elementProperties[id] && !ctx.lockedLayerIds?.has(id))
               .map((id) => [
                 id,
                 {
@@ -61,6 +63,7 @@ export const MoveTool: ToolHandler = {
         offsetX: ctx.worldPoint.x - props.x,
         offsetY: ctx.worldPoint.y - props.y,
         multiStartPositions,
+        duplicateOnMove: ctx.altKey || undefined,
       },
     };
   },
@@ -147,6 +150,21 @@ export function computeRubberBandIntersections(
 }
 
 /**
+ * Shift-drag (Figma): constrain the pointer to the dominant axis of travel
+ * measured from the drag start.
+ */
+export function constrainToAxis(
+  start: { x: number; y: number },
+  point: { x: number; y: number },
+): { x: number; y: number } {
+  const dx = point.x - start.x;
+  const dy = point.y - start.y;
+  return Math.abs(dx) >= Math.abs(dy)
+    ? { x: point.x, y: start.y }
+    : { x: start.x, y: point.y };
+}
+
+/**
  * Compute the next position for a single element being dragged.
  */
 export function computeDragPosition(
@@ -154,14 +172,20 @@ export function computeDragPosition(
   worldPoint: { x: number; y: number },
   snapEnabled: boolean,
   gridSize: number,
+  shiftKey = false,
 ): { x: number; y: number } {
-  const nextPosition = snapEnabled
-    ? snapPosition(
-        { x: worldPoint.x - dragState.offsetX, y: worldPoint.y - dragState.offsetY },
-        { gridSize },
-      )
-    : { x: worldPoint.x - dragState.offsetX, y: worldPoint.y - dragState.offsetY };
-  return nextPosition;
+  const point = shiftKey
+    ? constrainToAxis({ x: dragState.startX, y: dragState.startY }, worldPoint)
+    : worldPoint;
+  const raw = { x: point.x - dragState.offsetX, y: point.y - dragState.offsetY };
+  if (!snapEnabled) return raw;
+  const snapped = snapPosition(raw, { gridSize });
+  // Keep the constrained axis exactly on the start position.
+  if (shiftKey) {
+    if (point.x === dragState.startX) snapped.x = raw.x;
+    if (point.y === dragState.startY) snapped.y = raw.y;
+  }
+  return snapped;
 }
 
 /**
@@ -172,9 +196,13 @@ export function computeMultiDragDeltas(
   worldPoint: { x: number; y: number },
   snapEnabled: boolean,
   gridSize: number,
+  shiftKey = false,
 ): { dx: number; dy: number; snapDelta: { x: number; y: number } } {
-  const dx = worldPoint.x - dragState.startX;
-  const dy = worldPoint.y - dragState.startY;
+  const point = shiftKey
+    ? constrainToAxis({ x: dragState.startX, y: dragState.startY }, worldPoint)
+    : worldPoint;
+  const dx = point.x - dragState.startX;
+  const dy = point.y - dragState.startY;
 
   const entries = Object.entries(dragState.multiStartPositions!);
   if (entries.length === 0) return { dx, dy, snapDelta: { x: 0, y: 0 } };
@@ -189,8 +217,8 @@ export function computeMultiDragDeltas(
     dx,
     dy,
     snapDelta: {
-      x: snappedAnchor.x - anchorTarget.x,
-      y: snappedAnchor.y - anchorTarget.y,
+      x: shiftKey && dx === 0 ? 0 : snappedAnchor.x - anchorTarget.x,
+      y: shiftKey && dy === 0 ? 0 : snappedAnchor.y - anchorTarget.y,
     },
   };
 }

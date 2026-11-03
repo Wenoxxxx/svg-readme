@@ -1,6 +1,7 @@
 import type { ShapeElementProperties, ImageElementProperties, PathElementProperties } from "../../components/editor-canvas/ElementsRenderer";
 import { isGradient, gradientUrl } from "../editor/gradient";
 import { pointsToSvgD } from "../editor/pathUtils";
+import { getLineEndpoints } from "../../components/editor-canvas/shapeHelpers";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -73,9 +74,9 @@ export function renderShapeToSvgString(props: ShapeElementProperties, layerId?: 
   } else if (kind === "hexagon") {
     el = `<path d="${hexagonPath(x, y, width, height)}" fill="${fillValue}"${strokeAttr}${opacityAttr}/>`;
   } else if (kind === "line") {
-    const midY = y + height / 2;
+    const { x1, y1, x2, y2 } = getLineEndpoints(props);
     const lineStroke = stroke || fillValue;
-    el = `<line x1="${x}" y1="${midY}" x2="${x + width}" y2="${midY}" stroke="${lineStroke}" stroke-width="${Math.max(strokeWidth, 2)}" stroke-linecap="${cap}"${opacityAttr}/>`;
+    el = `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${lineStroke}" stroke-width="${Math.max(strokeWidth, 2)}" stroke-linecap="${cap}" stroke-linejoin="${join}"${dashAttr}${opacityAttr}/>`;
   }
 
   if (!el) return "";

@@ -15,7 +15,7 @@ export { trianglePath, starPath, hexagonPath } from "./shapeHelpers";
 // ── Internal imports from extracted modules ───────────────────────────────────
 import type { TextElementProperties, ShapeElementProperties, ImageElementProperties, PathElementProperties, ElementProperties } from "./elementTypes";
 import { getElementBoundingBox } from "./boundingBox";
-import { trianglePath, starPath, hexagonPath } from "./shapeHelpers";
+import { trianglePath, starPath, hexagonPath, getLineEndpoints } from "./shapeHelpers";
 import { ANIMATION_PRESETS, buildAnimationCSS } from "./animationPresets";
 
 // ─── Element Renderers ───────────────────────────────────────────────────────
@@ -197,9 +197,10 @@ const ShapeElement = memo(function ShapeElement({
     shapeEl = <path d={hexagonPath(x, y, width, height)} fill={fillValue} stroke={stroke} strokeWidth={strokeWidth} strokeLinecap={cap} strokeLinejoin={join} opacity={opacity} />;
     hitEl = <rect x={x} y={y} width={width} height={height} fill="transparent" />;
   } else if (kind === "line") {
-    const midY = y + height / 2;
-    shapeEl = <line x1={x} y1={midY} x2={x + width} y2={midY} stroke={stroke || fillValue} strokeWidth={Math.max(strokeWidth, 2)} strokeLinecap={cap} strokeDasharray={strokeDashArray || undefined} opacity={opacity} />;
-    hitEl = <rect x={x} y={midY - 6} width={width} height={12} fill="transparent" />;
+    const { x1, y1, x2, y2 } = getLineEndpoints(properties);
+    shapeEl = <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={stroke || fillValue} strokeWidth={Math.max(strokeWidth, 2)} strokeLinecap={cap} strokeLinejoin={join} strokeDasharray={strokeDashArray || undefined} opacity={opacity} />;
+    // Hit target follows the actual (possibly diagonal) stroke.
+    hitEl = <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="transparent" strokeWidth={12} strokeLinecap="round" data-hit="line" />;
   } else {
     shapeEl = null;
     hitEl = null;
