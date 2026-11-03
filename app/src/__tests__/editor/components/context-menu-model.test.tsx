@@ -88,6 +88,7 @@ describe("buildSelectionContextMenu — structure", () => {
       "Paste to replace",
       "Duplicate",
       "Delete",
+      "Select matching layers",
       "---",
       "Bring forward",
       "Bring to front",
@@ -95,14 +96,17 @@ describe("buildSelectionContextMenu — structure", () => {
       "Send to back",
       "---",
       "Group selection",
+      "Ungroup",
       "Frame selection",
       "Add auto layout",
       "Use as mask",
       "Flatten",
       "Outline text",
       "Outline stroke",
+      "Boolean operations",
       "---",
       "Create component",
+      "Detach instance",
       "Show/Hide",
       "Lock/Unlock",
       "---",
@@ -270,13 +274,14 @@ describe("buildSelectionContextMenu — multi-selection", () => {
 // ─── Copy/Paste as submenu ────────────────────────────────────────────────────
 
 describe("buildSelectionContextMenu — Copy/Paste as submenu", () => {
-  it("nests the two copy commands under the trailing submenu", () => {
+  it("nests the copy commands under the trailing submenu", () => {
     const items = singleSelectionMenu();
     const submenu = asAction(items.at(-1)!);
     expect(submenu.label).toBe("Copy/Paste as");
     expect(submenu.children?.map((child) => child.label)).toEqual([
       "Copy as PNG",
       "Copy as SVG",
+      "Copy as CSS",
     ]);
     expect(submenu.disabled).toBe(false);
   });

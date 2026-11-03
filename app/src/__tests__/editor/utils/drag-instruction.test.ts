@@ -159,18 +159,22 @@ describe("resolveDropTarget", () => {
     expect(resolve("child-a", "g1", makeChild)).toEqual({ parentId: "g1", index: 2 });
   });
 
+  // Rows list siblings frontmost-first, so a visual "above" is *in front of*
+  // the target (the slot after it in document order) and "below" is behind it
+  // (the target's own slot).
   it("slots a reposition next to the target, in the target's parent", () => {
-    expect(resolve("root-b", "child-b", above)).toEqual({ parentId: "g1", index: 2 });
-    expect(resolve("root-b", "child-b", below)).toEqual({ parentId: "g1", index: 3 });
-    expect(resolve("root-a", "root-b", above)).toEqual({ parentId: null, index: 1 });
+    expect(resolve("root-b", "child-b", above)).toEqual({ parentId: "g1", index: 3 });
+    expect(resolve("root-b", "child-b", below)).toEqual({ parentId: "g1", index: 2 });
+    expect(resolve("root-a", "root-b", above)).toEqual({ parentId: null, index: 2 });
   });
 
   it("shifts the slot when the source sat above the target", () => {
     // child-a is currently the first child, so child-b's slot becomes 1 once
-    // child-a is detached; putting the source back at 2 lands it below.
-    expect(resolve("child-a", "child-b", below)).toEqual({ parentId: "g1", index: 2 });
-    // child-b is last, so child-a's own slot is unchanged.
-    expect(resolve("child-b", "child-a", above)).toEqual({ parentId: "g1", index: 0 });
+    // child-a is detached; "below" (behind) child-b is that slot.
+    expect(resolve("child-a", "child-b", below)).toEqual({ parentId: "g1", index: 1 });
+    // child-b is last, so child-a's own slot is unchanged; "above" (in front)
+    // is the slot right after it.
+    expect(resolve("child-b", "child-a", above)).toEqual({ parentId: "g1", index: 1 });
   });
 
   it("returns null for a target that is not part of the tree", () => {

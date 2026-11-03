@@ -195,13 +195,15 @@ describe("LayerPanel — drag & drop instructions", () => {
     const onReorder = vi.fn();
     const { latest } = renderPanel(fixtureLayers(), { onReorder });
 
-    // "Footer Text" dragged onto the top third of "Background".
+    // Rows are frontmost-first. "Footer Text" dropped on the top third of
+    // "Background" lands directly above it in the panel, i.e. directly in front
+    // of it in document (paint) order.
     const instruction = drag("Footer Text", "Background", 4);
 
     expect(instruction).toBe("reorder-above");
     expect(latest().map((l) => l.id)).toEqual([
-      "footer",
       "bg",
+      "footer",
       "group-1",
       "child-1",
       "child-2",
@@ -212,16 +214,17 @@ describe("LayerPanel — drag & drop instructions", () => {
   it("shows a reorder-below indicator and slots the layer below the target", () => {
     const { latest } = renderPanel(fixtureLayers());
 
-    // "Background" dragged onto the bottom third of the "Logo" group row.
-    const instruction = drag("Background", "Logo", ROW_HEIGHT - 2);
+    // "Footer Text" (the top row) dropped on the bottom third of the "Logo"
+    // group row moves behind the group: just before it in document order.
+    const instruction = drag("Footer Text", "Logo", ROW_HEIGHT - 2);
 
     expect(instruction).toBe("reorder-below");
     expect(latest().map((l) => l.id)).toEqual([
+      "bg",
+      "footer",
       "group-1",
       "child-1",
       "child-2",
-      "bg",
-      "footer",
     ]);
   });
 

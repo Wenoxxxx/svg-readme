@@ -220,4 +220,19 @@ describe("useKeyboardShortcuts — layer command dispatch", () => {
     expect(handlers.setActiveTool).toHaveBeenCalledWith("move");
     unmount();
   });
+
+  it("lets Ctrl/Meta/Alt + tool letters reach the browser", () => {
+    const handlers = makeHandlers({ layers: [], selectedLayerIds: [] });
+    const { unmount } = renderHook(() => useKeyboardShortcuts(handlers));
+
+    for (const key of ["p", "r", "l", "h", "o", "t"]) {
+      const event = new KeyboardEvent("keydown", { key, ctrlKey: true, cancelable: true });
+      window.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
+    }
+    press("r", { ctrlKey: false, metaKey: true });
+    press("p", { ctrlKey: false, altKey: true });
+    expect(handlers.setActiveTool).not.toHaveBeenCalled();
+    unmount();
+  });
 });

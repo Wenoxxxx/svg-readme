@@ -208,9 +208,10 @@ describe("layerCommands enabled matrix", () => {
     expect(commands.booleanSubtract.enabled).toBe(true);
     expect(commands.wrapInFrame.enabled).toBe(true);
     expect(commands.outlineStroke.enabled).toBe(true);
-    // No group in the selection, so ungroup/flatten stay off.
+    // No group in the selection, so ungroup stays off; two closed shapes can
+    // be flattened into one path.
     expect(commands.ungroup.enabled).toBe(false);
-    expect(commands.flatten.enabled).toBe(false);
+    expect(commands.flatten.enabled).toBe(true);
   });
 
   it("refuses to group layers with different parents", () => {
@@ -224,11 +225,21 @@ describe("layerCommands enabled matrix", () => {
     expect(commands.wrapInFrame.enabled).toBe(false);
   });
 
-  it("enables ungroup + flatten when a group is selected", () => {
-    const commands = commandsFor([group("g"), layer("c", { parentId: "g" })], ["g"]);
+  it("enables ungroup + flatten when a group of shapes is selected", () => {
+    const commands = commandsFor(
+      [group("g"), layer("c", { parentId: "g" })],
+      ["g"],
+      { c: shapeProps() },
+    );
     expect(commands.ungroup.enabled).toBe(true);
     expect(commands.flatten.enabled).toBe(true);
     expect(commands.group.enabled).toBe(false);
+  });
+
+  it("disables flatten when the selection has nothing with an outline", () => {
+    const commands = commandsFor([group("g"), layer("c", { parentId: "g" })], ["g"]);
+    expect(commands.ungroup.enabled).toBe(true);
+    expect(commands.flatten.enabled).toBe(false);
   });
 
   it("gates Outline Text on a text property, not the layer type", () => {

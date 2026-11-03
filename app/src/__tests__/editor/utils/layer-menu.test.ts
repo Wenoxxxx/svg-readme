@@ -73,6 +73,7 @@ describe("layer menu layout", () => {
       "Paste to replace",
       "Duplicate",
       "Delete",
+      "Select matching layers",
       "---",
       "Bring forward",
       "Bring to front",
@@ -80,14 +81,17 @@ describe("layer menu layout", () => {
       "Send to back",
       "---",
       "Group selection",
+      "Ungroup",
       "Frame selection",
       "Add auto layout",
       "Use as mask",
       "Flatten",
       "Outline text",
       "Outline stroke",
+      "Boolean operations",
       "---",
       "Create component",
+      "Detach instance",
       "Show/Hide",
       "Lock/Unlock",
       "---",
@@ -102,7 +106,7 @@ describe("layer menu layout", () => {
     const separatorIndices = LAYER_MENU_LAYOUT.map((entry, index) =>
       entry.type === "separator" ? index : -1,
     ).filter((index) => index >= 0);
-    expect(separatorIndices).toEqual([6, 11, 19, 23, 26]);
+    expect(separatorIndices).toEqual([7, 12, 22, 27, 30]);
 
     const last = LAYER_MENU_LAYOUT.at(-1)!;
     expect(last.type).toBe("submenu");
@@ -153,7 +157,7 @@ describe("layer menu entries", () => {
     expect(pasteReplace).toMatchObject({ enabled: true });
   });
 
-  it("fills the Copy/Paste as submenu with the two copy commands", () => {
+  it("fills the Copy/Paste as submenu with the copy commands", () => {
     const menu = menuFor([layer("a")], ["a"], { elementProperties: { a: shapeProps() } });
     const submenu = menu.at(-1)!;
     expect(submenu.kind).toBe("submenu");
@@ -161,6 +165,7 @@ describe("layer menu entries", () => {
     expect(submenu.children.map((child) => child.label)).toEqual([
       "Copy as PNG",
       "Copy as SVG",
+      "Copy as CSS",
     ]);
     expect(submenu.children.every((child) => child.enabled)).toBe(true);
   });
