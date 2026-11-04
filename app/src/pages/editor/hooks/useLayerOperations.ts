@@ -1,6 +1,9 @@
-import { useCallback, useMemo, type MutableRefObject } from "react";
+import { useCallback, useMemo, useRef, type MutableRefObject } from "react";
 import type { LayerType } from "../../../context/EditorContext";
-import type { ElementProperties } from "../../../components/editor-canvas/ElementsRenderer";
+import type {
+  ElementProperties,
+  ShapeElementProperties,
+} from "../../../components/editor-canvas/ElementsRenderer";
 import type { ReorderDirection } from "../../../lib/editor/documentActions";
 import {
   reorderSelectedLayers,
@@ -10,7 +13,7 @@ import {
   duplicateLayersWithChildren,
 } from "../../../lib/editor/documentActions";
 import {
-  flattenGroup,
+  flattenLayers,
   wrapInFrame,
   toggleLayerMask,
   applyBooleanOp,
@@ -19,11 +22,16 @@ import {
   smartDelete,
   addAutoLayout,
   createComponent,
+  detachInstances,
+  findMatchingLayerIds,
   linkInstancesToMasters,
   flipLayers,
   type FlipAxis,
 } from "../../../lib/editor/layerOps";
-import { computeSelectionCapabilities } from "../../../lib/editor/selectionCapabilities";
+import {
+  computeSelectionCapabilities,
+  resolveCommandTargetId,
+} from "../../../lib/editor/selectionCapabilities";
 import {
   buildLayerCommands,
   runLayerCommand,
@@ -35,10 +43,11 @@ import {
  * The clipboard commands the menu exposes.
  *
  * Injected rather than reimplemented: the copy/paste machinery already lives
- * with the clipboard hook (internal + OS clipboard, PNG/SVG export), and the
- * registry dispatch must call exactly the same functions the keyboard
- * shortcuts do. `hasClipboard`/`clipboardCount` mirror the clipboard's state so
- * the capability layer can gate Paste here and Paste to replace.
+ * with the clipboard hook (internal + OS clipboard), the selection export with
+ * the export hook, and the registry dispatch must call exactly the same
+ * functions the keyboard shortcuts do. `hasClipboard`/`clipboardCount` mirror
+ * the clipboard's state so the capability layer can gate Paste here and Paste
+ * to replace.
  */
 export interface LayerClipboardPort {
   hasClipboard: boolean;
@@ -49,8 +58,10 @@ export interface LayerClipboardPort {
   cut: () => void;
   pasteHere: () => void;
   pasteToReplace: () => void;
+  /** Copy the *selection* (not the whole banner) as PNG / SVG / CSS. */
   copyAsPng: () => void;
   copyAsSvg: () => void;
+  copyAsCss?: () => void;
 }
 
 /** Clipboard commands that are not wired yet fall back to a no-op. */
@@ -76,10 +87,33 @@ export interface LayerOperationsParams {
   saveToHistory: () => void;
   setLayers: React.Dispatch<React.SetStateAction<LayerType[]>>;
   setElementProperties: React.Dispatch<React.SetStateAction<Record<string, ElementProperties>>>;
+  /** Selection setter; the editor's version also syncs `layer.active`. */
   setSelectedLayerIds: React.Dispatch<React.SetStateAction<string[]>>;
   setSelectedLayerId: (id: string | null) => void;
   /** Copy/cut/paste + copy-as bindings shared with the keyboard shortcuts. */
   clipboard?: LayerClipboardPort;
+}
+
+/** Ids are generated once per operation, outside any state updater. */
+function newId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+/**
+ * Where a new layer goes: directly in front of the frontmost selected layer
+ * (same parent), or at the top of the root level when nothing is selected.
+ */
+function insertionPoint(
+  layers: readonly LayerType[],
+  selectedLayerIds: readonly string[],
+): { index: number; parentId: string | null } {
+  const selected = new Set(selectedLayerIds);
+  let anchorIndex = -1;
+  layers.forEach((layer, index) => {
+    if (selected.has(layer.id)) anchorIndex = index;
+  });
+  if (anchorIndex < 0) return { index: layers.length, parentId: null };
+  return { index: anchorIndex + 1, parentId: layers[anchorIndex].parentId ?? null };
 }
 
 export function useLayerOperations(params: LayerOperationsParams) {
@@ -92,6 +126,43 @@ export function useLayerOperations(params: LayerOperationsParams) {
     setSelectedLayerId,
     clipboard = NOOP_CLIPBOARD,
   } = params;
+
+  /** Replace the selection (ids + primary id); `layer.active` follows. */
+  const select = useCallback(
+    (ids: string[]) => {
+      setSelectedLayerIds(ids);
+      setSelectedLayerId(ids[0] ?? null);
+    },
+    [setSelectedLayerIds, setSelectedLayerId],
+  );
+
+  /** Commit a computed document: one history step, then the new state. */
+  const commit = useCallback(
+    (
+      layers: LayerType[],
+      properties?: Record<string, ElementProperties>,
+      selection?: string[],
+    ) => {
+      saveToHistory();
+      if (selection) {
+        // Bake the active flags in so the panel highlight is right on the
+        // very first render after the operation.
+        const active = new Set(selection);
+        setLayers(
+          layers.map((layer) =>
+            (layer.active === true) === active.has(layer.id)
+              ? layer
+              : { ...layer, active: active.has(layer.id) },
+          ),
+        );
+      } else {
+        setLayers(layers);
+      }
+      if (properties) setElementProperties(properties);
+      if (selection) select(selection);
+    },
+    [saveToHistory, setLayers, setElementProperties, select],
+  );
 
   // ── Duplicate ──────────────────────────────────────────────────────────
   const handleDuplicate = useCallback(() => {
@@ -111,195 +182,208 @@ export function useLayerOperations(params: LayerOperationsParams) {
       currentLayers,
     );
 
-    saveToHistory();
+    commit(
+      [...currentLayers, ...duplicatedLayers],
+      { ...currentProperties, ...duplicatedProperties },
+      duplicatedTopIds,
+    );
+  }, [documentRef, commit]);
+
+  // ── Add layer / add group (layer panel header) ────────────────────────
+  // "Add Layer" creates a real, visible default rectangle (layer + element
+  // properties) in front of the selection and selects it.
+  const handleAddLayer = useCallback(() => {
+    const { layers, elementProperties, selectedLayerIds, frameSize } = documentRef.current;
+    const { index, parentId } = insertionPoint(layers, selectedLayerIds);
+    const id = newId("rect");
+    const width = Math.max(20, Math.round(Math.min(160, frameSize.width / 4)));
+    const height = Math.max(20, Math.round(Math.min(100, frameSize.height / 2)));
+    const layer: LayerType = {
+      id,
+      name: "Rectangle",
+      type: "shape",
+      locked: false,
+      visible: true,
+      active: true,
+      parentId,
+    };
+    const props: ShapeElementProperties = {
+      type: "shape",
+      kind: "rect",
+      x: Math.round((frameSize.width - width) / 2),
+      y: Math.round((frameSize.height - height) / 2),
+      width,
+      height,
+      fill: "#8b5cf6",
+      stroke: "rgba(255,255,255,0.2)",
+      strokeWidth: 1,
+      cornerRadius: 8,
+      opacity: 1,
+    };
+    const next = [...layers];
+    next.splice(index, 0, layer);
+    commit(next, { ...elementProperties, [id]: props }, [id]);
+  }, [documentRef, commit]);
+
+  const handleAddGroup = useCallback(() => {
+    const { layers, selectedLayerIds } = documentRef.current;
+    const { index, parentId } = insertionPoint(layers, selectedLayerIds);
+    const id = newId("group");
+    const group: LayerType = {
+      id,
+      name: "Group",
+      type: "group",
+      locked: false,
+      visible: true,
+      active: true,
+      parentId,
+      collapsed: false,
+    };
+    const next = [...layers];
+    next.splice(index, 0, group);
+    commit(next, undefined, [id]);
+  }, [documentRef, commit]);
+
+  // ── Duplicate in place for Alt+drag (Figma) ──────────────────────────────────
+  // Copies `ids` (with descendants) at the SAME position, selects the copies
+  // and returns the old→new id map so the canvas keeps dragging the copies.
+  // No history entry: the drag's onMoveStart already saved one, so a single
+  // undo removes both the move and the duplicate.
+  const handleDuplicateForDrag = useCallback((ids: string[]): Record<string, string> | null => {
+    const { layers: currentLayers, elementProperties: currentProperties } = documentRef.current;
+    const result = duplicateLayersWithChildren(currentLayers, currentProperties, ids, 0, 0);
+    if (!result) return null;
+    const duplicatedLayers = linkInstancesToMasters(result.duplicatedLayers, currentLayers);
+    const map: Record<string, string> = {};
+    for (const id of ids) {
+      const copy = result.duplicatedTopIds.find((newId) => newId.startsWith(`${id}-duplicate-`));
+      if (copy) map[id] = copy;
+    }
     setLayers((previous) => [
       ...previous.map((layer) => ({ ...layer, active: false })),
       ...duplicatedLayers,
     ]);
-    setElementProperties((previous) => ({ ...previous, ...duplicatedProperties }));
-    setSelectedLayerIds(duplicatedTopIds);
-    setSelectedLayerId(duplicatedTopIds[0] ?? null);
-  }, [documentRef, saveToHistory, setLayers, setElementProperties, setSelectedLayerIds, setSelectedLayerId]);
+    setElementProperties((previous) => ({ ...previous, ...result.duplicatedProperties }));
+    setSelectedLayerIds(result.duplicatedTopIds);
+    setSelectedLayerId(result.duplicatedTopIds[0] ?? null);
+    return map;
+  }, [documentRef, setLayers, setElementProperties, setSelectedLayerIds, setSelectedLayerId]);
 
   // ── Reorder layers ────────────────────────────────────────────────────
+  // Sibling-scoped: a layer only moves among its own siblings, and its
+  // descendants (linked by parentId) travel with it.
   const handleReorderLayers = useCallback((direction: ReorderDirection) => {
-    const currentSelection = documentRef.current.selectedLayerIds;
-    if (currentSelection.length === 0) return;
-
-    saveToHistory();
-    setLayers((previous) => reorderSelectedLayers(previous, currentSelection, direction));
-  }, [documentRef, saveToHistory, setLayers]);
+    const { layers, selectedLayerIds } = documentRef.current;
+    if (selectedLayerIds.length === 0) return;
+    const next = reorderSelectedLayers(layers, selectedLayerIds, direction);
+    if (next === layers) return;
+    commit(next);
+  }, [documentRef, commit]);
 
   // ── Group ─────────────────────────────────────────────────────────────
   const handleGroup = useCallback(() => {
-    const currentSelection = documentRef.current.selectedLayerIds;
-    const currentLayers = documentRef.current.layers;
-    if (!canGroupLayers(currentLayers, currentSelection)) return;
-
-    saveToHistory();
-    setLayers((previous) => {
-      const result = groupLayers(previous, currentSelection);
-      if (!result) return previous;
-      return result.updatedLayers;
-    });
-  }, [documentRef, saveToHistory, setLayers]);
+    const { layers, selectedLayerIds } = documentRef.current;
+    if (!canGroupLayers(layers, selectedLayerIds)) return;
+    const result = groupLayers(layers, selectedLayerIds);
+    if (!result) return;
+    commit(result.updatedLayers, undefined, [result.groupLayer.id]);
+  }, [documentRef, commit]);
 
   // ── Ungroup ───────────────────────────────────────────────────────────
   const handleUngroup = useCallback(() => {
-    const currentSelection = documentRef.current.selectedLayerIds;
-    const currentLayers = documentRef.current.layers;
-
-    const groupId = currentSelection.find((id) => {
-      const layer = currentLayers.find((l) => l.id === id);
-      return layer?.type === "group";
-    });
+    const { layers, selectedLayerIds } = documentRef.current;
+    const groupId = selectedLayerIds.find(
+      (id) => layers.find((l) => l.id === id)?.type === "group",
+    );
     if (!groupId) return;
+    const result = ungroupLayer(layers, groupId);
+    if (!result) return;
+    commit(result.updatedLayers, undefined, result.childIds);
+  }, [documentRef, commit]);
 
-    saveToHistory();
-    setLayers((previous) => {
-      const result = ungroupLayer(previous, groupId);
-      if (!result) return previous;
-      setSelectedLayerIds(result.childIds);
-      setSelectedLayerId(result.childIds[0] ?? null);
-      return result.updatedLayers;
-    });
-  }, [documentRef, saveToHistory, setLayers, setSelectedLayerIds, setSelectedLayerId]);
-
-  // ── Flatten group ─────────────────────────────────────────────────────
+  // ── Flatten (merge outlines into ONE path layer) ──────────────────────
   const handleFlatten = useCallback(() => {
-    const currentSelection = documentRef.current.selectedLayerIds;
-    const currentLayers = documentRef.current.layers;
-    const currentProperties = documentRef.current.elementProperties;
-    const groupId = currentSelection.find((id) => {
-      const layer = currentLayers.find((l) => l.id === id);
-      return layer?.type === "group";
-    });
-    if (!groupId) return;
-
-    saveToHistory();
-    setLayers((previous) => {
-      const result = flattenGroup(previous, currentProperties, groupId);
-      if (!result) return previous;
-      setElementProperties(result.updatedProperties);
-      setSelectedLayerIds([]);
-      setSelectedLayerId(null);
-      return result.updatedLayers;
-    });
-  }, [documentRef, saveToHistory, setLayers, setElementProperties, setSelectedLayerIds, setSelectedLayerId]);
+    const { layers, elementProperties, selectedLayerIds } = documentRef.current;
+    if (selectedLayerIds.length === 0) return;
+    const result = flattenLayers(layers, elementProperties, selectedLayerIds);
+    if (!result) return;
+    commit(result.updatedLayers, result.updatedProperties, [result.pathId]);
+  }, [documentRef, commit]);
 
   // ── Wrap in frame ─────────────────────────────────────────────────────
   const handleWrapInFrame = useCallback(() => {
-    const currentSelection = documentRef.current.selectedLayerIds;
-    if (currentSelection.length === 0) return;
-
-    saveToHistory();
-    setLayers((previous) => {
-      const result = wrapInFrame(previous, currentSelection);
-      if (!result) return previous;
-      setSelectedLayerIds([result.groupId]);
-      setSelectedLayerId(result.groupId);
-      return result.updatedLayers;
-    });
-  }, [documentRef, saveToHistory, setLayers, setSelectedLayerIds, setSelectedLayerId]);
+    const { layers, selectedLayerIds } = documentRef.current;
+    if (selectedLayerIds.length === 0) return;
+    const result = wrapInFrame(layers, selectedLayerIds);
+    if (!result) return;
+    commit(result.updatedLayers, undefined, [result.groupId]);
+  }, [documentRef, commit]);
 
   // ── Toggle mask ───────────────────────────────────────────────────────
-  const handleToggleMask = useCallback(() => {
-    const currentSelection = documentRef.current.selectedLayerIds;
-    if (currentSelection.length === 0) return;
-    const targetId = currentSelection[0];
-    const currentProperties = documentRef.current.elementProperties;
-
-    saveToHistory();
-    setLayers((previous) => {
-      const result = toggleLayerMask(previous, currentProperties, targetId);
-      if (!result) return previous;
-      setElementProperties(result.updatedProperties);
-      return result.updatedLayers;
-    });
-  }, [documentRef, saveToHistory, setLayers, setElementProperties]);
+  // Acts on the same layer the menu label describes (`resolveCommandTargetId`:
+  // the right-clicked layer when it is selected, else the first selected).
+  const handleToggleMask = useCallback((anchorLayerId?: string | null) => {
+    const { layers, elementProperties, selectedLayerIds } = documentRef.current;
+    const targetId = resolveCommandTargetId(layers, selectedLayerIds, anchorLayerId);
+    if (!targetId) return;
+    const result = toggleLayerMask(layers, elementProperties, targetId);
+    if (!result) return;
+    commit(result.updatedLayers, result.updatedProperties);
+  }, [documentRef, commit]);
 
   // ── Boolean operations ────────────────────────────────────────────────
   const handleBooleanOp = useCallback(
     (op: "union" | "subtract" | "intersect" | "exclude") => {
-      const currentSelection = documentRef.current.selectedLayerIds;
-      const currentLayers = documentRef.current.layers;
-      const currentProperties = documentRef.current.elementProperties;
-      if (currentSelection.length < 2) return;
-
-      saveToHistory();
-      const result = applyBooleanOp(currentLayers, currentProperties, currentSelection, op);
+      const { layers, elementProperties, selectedLayerIds } = documentRef.current;
+      if (selectedLayerIds.length < 2) return;
+      const result = applyBooleanOp(layers, elementProperties, selectedLayerIds, op);
       if (!result) return;
-      setLayers(result.updatedLayers);
-      setElementProperties(result.updatedProperties);
-      setSelectedLayerIds([result.resultId]);
-      setSelectedLayerId(result.resultId);
+      commit(result.updatedLayers, result.updatedProperties, [result.resultId]);
     },
-    [documentRef, saveToHistory, setLayers, setElementProperties, setSelectedLayerIds, setSelectedLayerId],
+    [documentRef, commit],
   );
 
   // ── Outline text ──────────────────────────────────────────────────────
   const handleOutlineText = useCallback(() => {
-    const currentSelection = documentRef.current.selectedLayerIds;
-    const currentLayers = documentRef.current.layers;
-    const currentProperties = documentRef.current.elementProperties;
-    const textId = currentSelection.find((id) => {
-      const props = currentProperties[id];
-      return props?.type === "text";
-    });
+    const { layers, elementProperties, selectedLayerIds } = documentRef.current;
+    const textId = selectedLayerIds.find((id) => elementProperties[id]?.type === "text");
     if (!textId) return;
-
-    saveToHistory();
-    const result = outlineText(currentLayers, currentProperties, textId);
+    const result = outlineText(layers, elementProperties, textId);
     if (!result) return;
-    setLayers(result.updatedLayers);
-    setElementProperties(result.updatedProperties);
-    setSelectedLayerIds([result.pathId]);
-    setSelectedLayerId(result.pathId);
-  }, [documentRef, saveToHistory, setLayers, setElementProperties, setSelectedLayerIds, setSelectedLayerId]);
+    commit(result.updatedLayers, result.updatedProperties, [result.pathId]);
+  }, [documentRef, commit]);
 
   // ── Outline stroke ────────────────────────────────────────────────────
   const handleOutlineStroke = useCallback(() => {
-    const currentSelection = documentRef.current.selectedLayerIds;
-    const currentLayers = documentRef.current.layers;
-    const currentProperties = documentRef.current.elementProperties;
-    const shapeId = currentSelection.find((id) => {
-      const props = currentProperties[id];
-      return props?.type === "shape" || props?.type === "path";
+    const { layers, elementProperties, selectedLayerIds } = documentRef.current;
+    const shapeId = selectedLayerIds.find((id) => {
+      const type = elementProperties[id]?.type;
+      return type === "shape" || type === "path";
     });
     if (!shapeId) return;
-
-    saveToHistory();
-    const result = outlineStroke(currentLayers, currentProperties, shapeId);
+    const result = outlineStroke(layers, elementProperties, shapeId);
     if (!result) return;
-    setLayers(result.updatedLayers);
-    setElementProperties(result.updatedProperties);
-    setSelectedLayerIds([result.pathId]);
-    setSelectedLayerId(result.pathId);
-  }, [documentRef, saveToHistory, setLayers, setElementProperties, setSelectedLayerIds, setSelectedLayerId]);
+    commit(result.updatedLayers, result.updatedProperties, [result.pathId]);
+  }, [documentRef, commit]);
 
   // ── Smart delete (Alt+Delete) ─────────────────────────────────────────
   const handleSmartDelete = useCallback(
     (preserveChildren: boolean) => {
-      const currentSelection = documentRef.current.selectedLayerIds;
-      const currentLayers = documentRef.current.layers;
-      const currentProperties = documentRef.current.elementProperties;
-      if (currentSelection.length === 0) return;
-
-      const hasLocked = currentSelection.some((id) => {
-        const layer = currentLayers.find((l) => l.id === id);
-        return layer?.locked;
-      });
-      if (hasLocked) return;
-
-      saveToHistory();
-      const result = smartDelete(currentLayers, currentProperties, currentSelection, preserveChildren);
+      const { layers, elementProperties, selectedLayerIds } = documentRef.current;
+      // Same lock rule as Delete: locked layers are skipped, not blocking.
+      const byId = new Map(layers.map((l) => [l.id, l]));
+      const targets = selectedLayerIds.filter((id) => byId.get(id)?.locked !== true);
+      if (targets.length === 0) return;
+      const result = smartDelete(layers, elementProperties, targets, preserveChildren);
       if (!result) return;
-      setLayers(result.updatedLayers);
-      setElementProperties(result.updatedProperties);
-      setSelectedLayerIds([]);
-      setSelectedLayerId(null);
+      const remaining = new Set(result.updatedLayers.map((l) => l.id));
+      commit(
+        result.updatedLayers,
+        result.updatedProperties,
+        selectedLayerIds.filter((id) => remaining.has(id) && !targets.includes(id)),
+      );
     },
-    [documentRef, saveToHistory, setLayers, setElementProperties, setSelectedLayerIds, setSelectedLayerId],
+    [documentRef, commit],
   );
 
   // ── Toggle visibility ─────────────────────────────────────────────────
@@ -307,80 +391,79 @@ export function useLayerOperations(params: LayerOperationsParams) {
   // and follows the reference's single combined row: if anything in the
   // selection is hidden, the command reveals it all; otherwise it hides it all.
   const handleToggleLayerVisibility = useCallback(() => {
-    const selection = documentRef.current.selectedLayerIds;
+    const { layers, selectedLayerIds: selection } = documentRef.current;
     if (selection.length === 0) return;
-    const byId = new Map(documentRef.current.layers.map((l) => [l.id, l]));
-    const anyHidden = selection.some((id) => byId.get(id)?.visible === false);
-    const visible = anyHidden;
-
-    saveToHistory();
-    setLayers((prev) =>
-      prev.map((l) => (selection.includes(l.id) ? { ...l, visible } : l)),
-    );
-  }, [documentRef, saveToHistory, setLayers]);
+    const byId = new Map(layers.map((l) => [l.id, l]));
+    const visible = selection.some((id) => byId.get(id)?.visible === false);
+    commit(layers.map((l) => (selection.includes(l.id) ? { ...l, visible } : l)));
+  }, [documentRef, commit]);
 
   // ── Toggle lock ───────────────────────────────────────────────────────
   const handleToggleLayerLock = useCallback(() => {
-    const selection = documentRef.current.selectedLayerIds;
+    const { layers, selectedLayerIds: selection } = documentRef.current;
     if (selection.length === 0) return;
-    const byId = new Map(documentRef.current.layers.map((l) => [l.id, l]));
-    const anyUnlocked = selection.some((id) => byId.get(id)?.locked === false);
-    const locked = anyUnlocked;
-
-    saveToHistory();
-    setLayers((prev) =>
-      prev.map((l) => (selection.includes(l.id) ? { ...l, locked } : l)),
-    );
-  }, [documentRef, saveToHistory, setLayers]);
+    const byId = new Map(layers.map((l) => [l.id, l]));
+    const locked = selection.some((id) => byId.get(id)?.locked === false);
+    commit(layers.map((l) => (selection.includes(l.id) ? { ...l, locked } : l)));
+  }, [documentRef, commit]);
 
   // ── Add auto layout ───────────────────────────────────────────────────
   // Wraps the selection in a container that owns its children's positions, and
   // writes the first pass of those positions immediately so the canvas updates
   // without a second render pass.
   const handleAddAutoLayout = useCallback(() => {
-    const { layers: currentLayers, elementProperties: currentProperties, selectedLayerIds: currentSelection } = documentRef.current;
-    if (currentSelection.length === 0) return;
-
-    const result = addAutoLayout(currentLayers, currentProperties, currentSelection);
+    const { layers, elementProperties, selectedLayerIds } = documentRef.current;
+    if (selectedLayerIds.length === 0) return;
+    const result = addAutoLayout(layers, elementProperties, selectedLayerIds);
     if (!result) return;
-
-    saveToHistory();
-    setLayers(result.updatedLayers);
-    setElementProperties(result.updatedProperties);
-    setSelectedLayerIds([result.containerId]);
-    setSelectedLayerId(result.containerId);
-  }, [documentRef, saveToHistory, setLayers, setElementProperties, setSelectedLayerIds, setSelectedLayerId]);
+    commit(result.updatedLayers, result.updatedProperties, [result.containerId]);
+  }, [documentRef, commit]);
 
   // ── Create component ──────────────────────────────────────────────────
   const handleCreateComponent = useCallback(() => {
-    const { layers: currentLayers, selectedLayerIds: currentSelection } = documentRef.current;
-    if (currentSelection.length === 0) return;
-
-    const result = createComponent(currentLayers, currentSelection);
+    const { layers, selectedLayerIds } = documentRef.current;
+    if (selectedLayerIds.length === 0) return;
+    const result = createComponent(layers, selectedLayerIds);
     if (!result) return;
+    commit(result.updatedLayers, undefined, [result.masterId]);
+  }, [documentRef, commit]);
 
-    saveToHistory();
-    setLayers(result.updatedLayers);
-    setSelectedLayerIds([result.masterId]);
-    setSelectedLayerId(result.masterId);
-  }, [documentRef, saveToHistory, setLayers, setSelectedLayerIds, setSelectedLayerId]);
+  // ── Detach instance ───────────────────────────────────────────────────
+  const handleDetachInstance = useCallback(() => {
+    const { layers, selectedLayerIds } = documentRef.current;
+    const updated = detachInstances(layers, selectedLayerIds);
+    if (!updated) return;
+    commit(updated);
+  }, [documentRef, commit]);
+
+  // ── Select matching layers ────────────────────────────────────────────
+  // A selection change, not a document edit: no history entry.
+  const handleSelectMatching = useCallback(() => {
+    const { layers, elementProperties, selectedLayerIds } = documentRef.current;
+    const ids = findMatchingLayerIds(layers, elementProperties, selectedLayerIds);
+    if (ids.length === 0) return;
+    select(ids);
+  }, [documentRef, select]);
 
   // ── Flip ──────────────────────────────────────────────────────────────
   // Toggles the flipH/flipV flags the renderer and exporter already honour, so
   // the result matches the right bar's flip buttons exactly.
   const handleFlip = useCallback(
     (axis: FlipAxis) => {
-      const { elementProperties: currentProperties, selectedLayerIds: currentSelection } = documentRef.current;
-      if (currentSelection.length === 0) return;
-
-      const result = flipLayers(currentProperties, currentSelection, axis);
+      const { elementProperties, selectedLayerIds } = documentRef.current;
+      if (selectedLayerIds.length === 0) return;
+      const result = flipLayers(elementProperties, selectedLayerIds, axis);
       if (!result) return;
-
       saveToHistory();
-      setElementProperties((prev) => ({ ...prev, ...result.updatedProperties }));
+      setElementProperties({ ...elementProperties, ...result.updatedProperties });
     },
     [documentRef, saveToHistory, setElementProperties],
   );
+
+  // The layer a menu was opened on. Set for the duration of one dispatch so
+  // commands that target a single layer (Use as mask) act on the layer the
+  // menu label was resolved from.
+  const anchorRef = useRef<string | null>(null);
 
   // ── Layer context menu action handler ─────────────────────────────────
   // The action map is memoized (not a ref written during render) so the
@@ -395,8 +478,12 @@ export function useLayerOperations(params: LayerOperationsParams) {
       pasteToReplace: clipboard.pasteToReplace,
       copyAsPng: clipboard.copyAsPng,
       copyAsSvg: clipboard.copyAsSvg,
+      ...(clipboard.copyAsCss ? { copyAsCss: clipboard.copyAsCss } : {}),
       // Edit
       duplicate: handleDuplicate,
+      // `delete` is owned by the editor shell (shared with Cut/Backspace/row
+      // trash via `deleteLayers`), which intercepts it before this map.
+      selectMatching: handleSelectMatching,
       bringToFront: () => handleReorderLayers("front"),
       bringForward: () => handleReorderLayers("forward"),
       sendBackward: () => handleReorderLayers("backward"),
@@ -406,27 +493,28 @@ export function useLayerOperations(params: LayerOperationsParams) {
       ungroup: handleUngroup,
       wrapInFrame: handleWrapInFrame,
       addAutoLayout: handleAddAutoLayout,
-      toggleMask: handleToggleMask,
+      toggleMask: () => handleToggleMask(anchorRef.current),
       flatten: handleFlatten,
       outlineText: handleOutlineText,
       outlineStroke: handleOutlineStroke,
+      booleanUnion: () => handleBooleanOp("union"),
+      booleanSubtract: () => handleBooleanOp("subtract"),
+      booleanIntersect: () => handleBooleanOp("intersect"),
+      booleanExclude: () => handleBooleanOp("exclude"),
       // Component
       createComponent: handleCreateComponent,
+      detachInstance: handleDetachInstance,
       // State
       toggleVisibility: handleToggleLayerVisibility,
       toggleLock: handleToggleLayerLock,
       // Transform
       flipHorizontal: () => handleFlip("horizontal"),
       flipVertical: () => handleFlip("vertical"),
-      // Not part of the reference menu, still dispatchable.
-      booleanUnion: () => handleBooleanOp("union"),
-      booleanSubtract: () => handleBooleanOp("subtract"),
-      booleanIntersect: () => handleBooleanOp("intersect"),
-      booleanExclude: () => handleBooleanOp("exclude"),
     }),
     [
       clipboard,
       handleDuplicate,
+      handleSelectMatching,
       handleReorderLayers,
       handleGroup,
       handleUngroup,
@@ -435,6 +523,7 @@ export function useLayerOperations(params: LayerOperationsParams) {
       handleToggleLayerVisibility,
       handleToggleLayerLock,
       handleCreateComponent,
+      handleDetachInstance,
       handleFlip,
       handleFlatten,
       handleOutlineText,
@@ -448,7 +537,7 @@ export function useLayerOperations(params: LayerOperationsParams) {
   // decision lives in `selectionCapabilities`, so the menu, shortcuts and this
   // dispatcher can never disagree about what a selection allows.
   const handleLayerContextAction = useCallback(
-    (actionId: string) => {
+    (actionId: string, anchorLayerId?: string | null) => {
       const { layers, selectedLayerIds, elementProperties } = documentRef.current;
       const capabilities = computeSelectionCapabilities({
         layers,
@@ -462,13 +551,21 @@ export function useLayerOperations(params: LayerOperationsParams) {
         capabilities,
         handlers: layerActionMap,
       });
-      runLayerCommand(commands, actionId as LayerCommandId);
+      anchorRef.current = anchorLayerId ?? null;
+      try {
+        runLayerCommand(commands, actionId as LayerCommandId);
+      } finally {
+        anchorRef.current = null;
+      }
     },
     [documentRef, layerActionMap, clipboard],
   );
 
   return {
     handleDuplicate,
+    handleAddLayer,
+    handleAddGroup,
+    handleDuplicateForDrag,
     handleReorderLayers,
     handleGroup,
     handleUngroup,
@@ -478,6 +575,8 @@ export function useLayerOperations(params: LayerOperationsParams) {
     handleBooleanOp,
     handleAddAutoLayout,
     handleCreateComponent,
+    handleDetachInstance,
+    handleSelectMatching,
     handleFlip,
     handleOutlineText,
     handleOutlineStroke,

@@ -15,8 +15,9 @@ import {
   TextStrikethrough,
 } from "@phosphor-icons/react";
 import type { TextElementProperties, ElementProperties } from "../../editor-canvas/ElementsRenderer";
-import ColorPickerPopover from "../ColorPickerPopover";
-import { PropInput } from "./helpers";
+
+import { NumberField } from "./NumberField";
+import { ColorField } from "./InspectorControls";
 import AlignmentControls from "./AlignmentControls";
 
 interface DesignTabTextProps {
@@ -85,14 +86,12 @@ export function DesignTabText({
               </svg>
             </div>
           </div>
-          <PropInput
+          <NumberField
             label="Sz"
-            value={String(selectedProps.fontSize)}
-            type="number"
-            onChange={(v) => {
-              const parsed = Number(v);
-              if (!isNaN(parsed) && parsed > 0) update({ fontSize: parsed });
-            }}
+            ariaLabel="Font size"
+            value={selectedProps.fontSize}
+            min={1}
+            onCommit={(v) => update({ fontSize: v })}
           />
         </div>
 
@@ -145,7 +144,7 @@ export function DesignTabText({
               onClick={() => update({ textAutoResize: mode.value })}
               title={mode.title}
               className={`flex-1 p-2 rounded flex items-center justify-center gap-1.5 transition-colors ${
-                (selectedProps.textAutoResize ?? "NONE") === mode.value ? "bg-zinc-800 text-zinc-100 shadow-sm" : "text-zinc-400 hover:text-zinc-200"
+                (selectedProps.textAutoResize ?? "WIDTH_AND_HEIGHT") === mode.value ? "bg-zinc-800 text-zinc-100 shadow-sm" : "text-zinc-400 hover:text-zinc-200"
               }`}
             >
               {mode.value === "WIDTH_AND_HEIGHT" && <ArrowsLeftRight className="w-3.5 h-3.5" />}
@@ -158,17 +157,19 @@ export function DesignTabText({
 
         {/* Line height + Letter spacing */}
         <div className="mt-2 grid grid-cols-2 gap-2">
-          <PropInput
+          <NumberField
             label="LH"
-            value={String(Math.round(selectedProps.lineHeight ?? selectedProps.fontSize * 1.4))}
-            type="number"
-            onChange={(v) => { const parsed = Number(v); if (!isNaN(parsed) && parsed > 0) update({ lineHeight: parsed }); }}
+            ariaLabel="Line height"
+            value={selectedProps.lineHeight ?? Math.round(selectedProps.fontSize * 1.4 * 100) / 100}
+            min={1}
+            onCommit={(v) => update({ lineHeight: v })}
           />
-          <PropInput
+          <NumberField
             label="LS"
-            value={String(selectedProps.letterSpacing ?? 0)}
-            type="number"
-            onChange={(v) => { const parsed = Number(v); if (!isNaN(parsed)) update({ letterSpacing: parsed }); }}
+            ariaLabel="Letter spacing"
+            value={selectedProps.letterSpacing ?? 0}
+            step={0.1}
+            onCommit={(v) => update({ letterSpacing: v })}
           />
         </div>
 
@@ -224,7 +225,7 @@ export function DesignTabText({
         <div className="text-[11px] font-[JetBrains_Mono] text-zinc-500 uppercase tracking-wider mb-3 font-semibold">
           Text Color
         </div>
-        <ColorPickerPopover value={selectedProps.color} onChange={(hex) => update({ color: hex })} />
+        <ColorField value={selectedProps.color} onChange={(hex) => update({ color: hex })} ariaLabel="Text color" />
       </div>
 
       {/* Background Fill */}
@@ -243,7 +244,7 @@ export function DesignTabText({
           )}
         </div>
         {selectedProps.backgroundColor ? (
-          <ColorPickerPopover value={selectedProps.backgroundColor} onChange={(hex) => update({ backgroundColor: hex })} />
+          <ColorField value={selectedProps.backgroundColor} onChange={(hex) => update({ backgroundColor: hex })} ariaLabel="Text background color" />
         ) : (
           <button
             onClick={() => update({ backgroundColor: "#333333" })}

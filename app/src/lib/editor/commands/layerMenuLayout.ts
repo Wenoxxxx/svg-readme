@@ -12,8 +12,9 @@ import type { LayerCommand, LayerCommandId } from "./layerCommands";
  * same order, with separators dividing the six groups and a "Copy/Paste as"
  * submenu closing the menu.
  *
- * `ungroup` and the boolean ops are intentionally absent: they are real commands
- * but they are not part of the reference menu.
+ * Beyond the reference, the menu also carries the Figma commands users expect
+ * from a layer menu: Select matching layers, Ungroup, a Boolean operations
+ * submenu, Detach instance and Copy as CSS.
  */
 
 export type LayerMenuEntry =
@@ -34,6 +35,7 @@ export const LAYER_MENU_LAYOUT: readonly LayerMenuEntry[] = [
   { type: "command", id: "pasteToReplace" },
   { type: "command", id: "duplicate" },
   { type: "command", id: "delete" },
+  { type: "command", id: "selectMatching" },
   { type: "separator" },
   // ── Ordering ──────────────────────────────────────────────────────────────
   { type: "command", id: "bringForward" },
@@ -43,15 +45,28 @@ export const LAYER_MENU_LAYOUT: readonly LayerMenuEntry[] = [
   { type: "separator" },
   // ── Structure ─────────────────────────────────────────────────────────────
   { type: "command", id: "group" },
+  { type: "command", id: "ungroup" },
   { type: "command", id: "wrapInFrame" },
   { type: "command", id: "addAutoLayout" },
   { type: "command", id: "toggleMask" },
   { type: "command", id: "flatten" },
   { type: "command", id: "outlineText" },
   { type: "command", id: "outlineStroke" },
+  {
+    type: "submenu",
+    id: "booleanOps",
+    label: "Boolean operations",
+    children: [
+      "booleanUnion",
+      "booleanSubtract",
+      "booleanIntersect",
+      "booleanExclude",
+    ],
+  },
   { type: "separator" },
   // ── Component ─────────────────────────────────────────────────────────────
   { type: "command", id: "createComponent" },
+  { type: "command", id: "detachInstance" },
   // ── State ─────────────────────────────────────────────────────────────────
   { type: "command", id: "toggleVisibility" },
   { type: "command", id: "toggleLock" },
@@ -65,7 +80,7 @@ export const LAYER_MENU_LAYOUT: readonly LayerMenuEntry[] = [
     type: "submenu",
     id: "copyPasteAs",
     label: "Copy/Paste as",
-    children: ["copyAsPng", "copyAsSvg"],
+    children: ["copyAsPng", "copyAsSvg", "copyAsCss"],
   },
 ];
 

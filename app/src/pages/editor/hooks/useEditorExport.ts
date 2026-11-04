@@ -12,6 +12,10 @@ import {
 import { downloadPng } from "../../../lib/exportPng";
 import { exportAnimated, downloadGif } from "../../../lib/animatedExport";
 import type { ExportOptions } from "../../../components/ui/EditorRightBar";
+import {
+  buildElementCss,
+  buildSelectionExportDocument,
+} from "../../../lib/editor/layerOps";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -19,7 +23,19 @@ interface ExportData {
   frameSize: { width: number; height: number };
   elementProperties: Record<string, ElementProperties>;
   layers: LayerType[];
+  /** Current selection — scopes the menu's "Copy as SVG / PNG / CSS". */
+  selectedLayerIds?: string[];
 }
+
+/** A copied selection is bare artwork: no banner background, frame or border. */
+const SELECTION_SVG_OPTIONS = {
+  backgroundColor: "transparent",
+  rounded: false,
+  showBorder: false,
+} as const;
+
+const reportCopyFailure = (err: unknown) =>
+  notifyCopyFailure(err instanceof Error ? err.message : undefined);
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
@@ -105,9 +121,9 @@ export function useEditorExport(data: ExportData) {
     const handleExportAnimated = (e: Event) => {
       const { fps, format } = (e as CustomEvent).detail as { fps: number; format: "gif" | "png-sequence" };
       const d = exportDataRef.current;
-      const dispatchProgress = (current: number, total: number) => {
+      const dispatchProgress = (current: number, total: number, error?: string) => {
         window.dispatchEvent(new CustomEvent("export-animated-progress", {
-          detail: { current, total },
+          detail: { current, total, error },
         }));
       };
       (async () => {
@@ -119,11 +135,12 @@ export function useEditorExport(data: ExportData) {
           );
           if (result.gifBlob) {
             downloadGif(result.gifBlob, "banner.gif");
-            dispatchProgress(1, 1);
           }
+          // Always signal completion so the UI never stays on "Rendering…".
+          dispatchProgress(1, 1);
         } catch (err) {
           console.error("Animated export failed:", err);
-          dispatchProgress(0, 0);
+          dispatchProgress(0, 0, err instanceof Error ? err.message : "Animated export failed");
         }
       })();
     };
@@ -143,8 +160,54 @@ export function useEditorExport(data: ExportData) {
     };
   }, []);
 
+  // ── Selection-scoped copy (layer context menu "Copy/Paste as") ─────────
+  // Only the selected layers (and their descendants) are exported, cropped to
+  // the selection's bounding box — never the whole banner.
+  const selectionDocument = useCallback(() => {
+    const d = exportDataRef.current;
+    return buildSelectionExportDocument(
+      d.layers,
+      d.elementProperties,
+      d.selectedLayerIds ?? [],
+    );
+  }, []);
+
+  const copySelectionAsSvg = useCallback(() => {
+    const doc = selectionDocument();
+    if (!doc) return;
+    copySvgText(
+      buildSvgString({ ...doc, ...SELECTION_SVG_OPTIONS }),
+    ).catch(reportCopyFailure);
+  }, [selectionDocument]);
+
+  const copySelectionAsPng = useCallback(() => {
+    const doc = selectionDocument();
+    if (!doc) return;
+    const svgString = buildSvgString({ ...doc, ...SELECTION_SVG_OPTIONS });
+    copyImageToClipboard(
+      svgString,
+      doc.frameSize.width,
+      doc.frameSize.height,
+      doc.elementProperties,
+      2,
+    ).catch(reportCopyFailure);
+  }, [selectionDocument]);
+
+  const copySelectionAsCss = useCallback(() => {
+    const d = exportDataRef.current;
+    const id = d.selectedLayerIds?.[0];
+    if (!id) return;
+    const name = d.layers.find((layer) => layer.id === id)?.name;
+    const css = buildElementCss(d.elementProperties[id], name);
+    if (!css) return;
+    copySvgText(css).catch(reportCopyFailure);
+  }, []);
+
   return {
     handleExport,
     exportDataRef,
+    copySelectionAsSvg,
+    copySelectionAsPng,
+    copySelectionAsCss,
   };
 }

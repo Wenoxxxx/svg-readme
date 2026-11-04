@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useMemo, useRef, useState } from "react";
-import { clampZoom } from "../../lib/editor/geometry";
+import { clampZoom, fitBoundsToViewport, zoomAroundCenter, getSelectionBounds, type Viewport } from "../../lib/editor/geometry";
+import { getElementBoundingBox } from "../../components/editor-canvas/boundingBox";
 import { startPan, updatePan } from "../../lib/editor-tools/PanZoomHandler";
 import ViewportControls from "../../components/editor-canvas/ViewportControls";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
@@ -18,6 +19,8 @@ import { DEFAULT_TEXT_PROPS, DEFAULT_TEXT_HEIGHT } from "../../components/editor
 import { computeAutoSize, getTextLines, getTextBlockHeight, getTextBlockWidth, getTextAutoBox } from "../../lib/editor/textMeasure";
 import { ShortcutGrid } from "./EditorInnerShortcuts";
 import SelectionContextMenu from "../../components/editor-sidebar/SelectionContextMenu";
+import type { LayerPanelDocumentActions } from "../../components/editor-sidebar/LayerPanel";
+import { deleteLayers } from "../../lib/editor/documentActions";
 
 // ── Extracted hooks ───────────────────────────────────────────────────────────
 import { useEditorHistory } from "./hooks/useEditorHistory";
@@ -125,7 +128,7 @@ export function EditorInner() {
   }, [layers, elementProperties, selectedLayerIds, frameSize]);
 
   // ── Extracted hooks ──────────────────────────────────────────────────────
-  const { history, setHistory, saveToHistory, handleUndo, handleRedo } =
+  const { history, setHistory, saveToHistory, checkpoint, handleUndo, handleRedo } =
     useEditorHistory({ documentRef, setLayers, setElementProperties, setSelectedLayerIds, setSelectedLayerId, setFrameSize });
 
   const {
@@ -148,8 +151,8 @@ export function EditorInner() {
     onClipboardChange: setClipboardLayerCount,
   });
 
-  const { handleExport } =
-    useEditorExport({ frameSize, elementProperties, layers });
+  const { handleExport, copySelectionAsSvg, copySelectionAsPng, copySelectionAsCss } =
+    useEditorExport({ frameSize, elementProperties, layers, selectedLayerIds });
 
   const { persistenceDocRef, handleNewProject, handleSave } =
     useEditorPersistence({
@@ -215,27 +218,26 @@ export function EditorInner() {
     return () => window.removeEventListener("toggle-shortcuts", handler);
   }, []);
 
-  // ── Delete selected layers ────────────────────────────────────────────────
-  const handleDeleteSelectedLayers = useCallback(() => {
-    if (selectedLayerIds.length === 0) return;
-    if (selectedLayerIds.some((id) => layers.find((l) => l.id === id)?.locked)) return;
+  // ── Delete layers (menu Delete, Backspace, Cut, layer-row trash) ──────────
+  // One path for every delete: locked targets are skipped (the unlocked ones
+  // in a mixed selection are still deleted), descendants and their element
+  // properties go with their parent, and the selection drops removed ids.
+  const handleDeleteLayers = useCallback((targetIds?: readonly string[]) => {
+    const { layers: current, elementProperties: props, selectedLayerIds: selection } = documentRef.current;
+    const ids = targetIds ?? selection;
+    if (ids.length === 0) return;
+    const result = deleteLayers(current, props, ids);
+    if (!result) return;
+    const removed = new Set(result.deletedIds);
+    const nextSelection = selection.filter((id) => !removed.has(id));
     saveToHistory();
-    const idsToDelete = new Set(selectedLayerIds);
-    const collectDescendants = (parentId: string) => {
-      layers.forEach((l) => {
-        if ((l.parentId ?? null) === parentId) { idsToDelete.add(l.id); collectDescendants(l.id); }
-      });
-    };
-    [...idsToDelete].forEach((id) => collectDescendants(id));
-    setLayers((prev) => prev.filter((l) => !idsToDelete.has(l.id)));
-    setElementProperties((prev) => {
-      const next = { ...prev };
-      idsToDelete.forEach((id) => delete next[id]);
-      return next;
-    });
-    setSelectedLayerId(null);
-    setSelectedLayerIds([]);
-  }, [selectedLayerIds, layers, setLayers, setElementProperties, setSelectedLayerId, setSelectedLayerIds, saveToHistory]);
+    setLayers(result.updatedLayers);
+    setElementProperties(result.updatedProperties);
+    setSelectedLayerIds(nextSelection);
+    setSelectedLayerId(nextSelection[0] ?? null);
+  }, [setLayers, setElementProperties, setSelectedLayerId, setSelectedLayerIds, saveToHistory]);
+
+  const handleDeleteSelectedLayers = useCallback(() => handleDeleteLayers(), [handleDeleteLayers]);
 
   // ── Cut (Ctrl+X) ─────────────────────────────────────────────────────────
   const handleCut = useCallback(() => {
@@ -256,11 +258,15 @@ export function EditorInner() {
       cut: handleCut,
       pasteHere: handlePasteHere,
       pasteToReplace: handlePasteToReplace,
-      // Reuse the existing export services instead of duplicating them.
-      copyAsPng: () => window.dispatchEvent(new CustomEvent("copy-png-image")),
-      copyAsSvg: () => window.dispatchEvent(new CustomEvent("copy-svg-code")),
+      // Selection-scoped: only the selected layers, cropped to their bounds.
+      copyAsPng: copySelectionAsPng,
+      copyAsSvg: copySelectionAsSvg,
+      copyAsCss: copySelectionAsCss,
     }),
     [
+      copySelectionAsPng,
+      copySelectionAsSvg,
+      copySelectionAsCss,
       hasClipboard,
       clipboardCount,
       clipboardReadable,
@@ -277,13 +283,40 @@ export function EditorInner() {
     clipboard: layerClipboard,
   });
 
+  // `anchorLayerId` is the layer the menu was opened on, so single-target
+  // commands (Use as mask) act on the layer their label refers to.
   const handleLayerContextAction = useCallback(
-    (actionId: string) => {
+    (actionId: string, anchorLayerId?: string | null) => {
       if (actionId === "delete") handleDeleteSelectedLayers();
-      else layerOps.handleLayerContextAction(actionId);
+      else layerOps.handleLayerContextAction(actionId, anchorLayerId);
     },
     [handleDeleteSelectedLayers, layerOps],
   );
+
+  // Layer panel document edits: every eye/lock/rename/drag/add/trash is a
+  // discrete undo step; the row trash shares the menu's delete path.
+  const layerPanelActions = useMemo<LayerPanelDocumentActions>(
+    () => ({
+      onBeforeMutation: saveToHistory,
+      onDeleteLayer: (id: string) => handleDeleteLayers([id]),
+      onAddLayer: layerOps.handleAddLayer,
+      onAddGroup: layerOps.handleAddGroup,
+    }),
+    [saveToHistory, handleDeleteLayers, layerOps.handleAddLayer, layerOps.handleAddGroup],
+  );
+
+  // Start-screen entries (blank canvas, size templates) open a fresh document:
+  // nothing from a previous session's layers, selection or history leaks in.
+  const startFreshDocument = useCallback((width: number, height: number) => {
+    setFrameSize({ width, height });
+    setLayers([]);
+    setElementProperties({});
+    setSelectedLayerId(null);
+    setSelectedLayerIds([]);
+    setHistory({ past: [], future: [] });
+    markClean();
+    setIsProjectActive(true);
+  }, [setFrameSize, setLayers, setElementProperties, setSelectedLayerId, setSelectedLayerIds, setHistory, markClean, setIsProjectActive]);
 
   // ── Commit text edits ────────────────────────────────────────────────────
   const handleCommitText = useCallback(() => {
@@ -335,6 +368,49 @@ export function EditorInner() {
     setActiveTool("move");
   }, [editingLayerId, editingContent, setLayers, setElementProperties, setIsEditingText, setSelectedLayerId, setActiveTool, saveToHistory]);
 
+  // ── User-driven viewport changes ───────────────────────────────────────────────────
+  // Once the user zooms or pans, workspace resizes stop auto-fitting.
+  const userViewportChangedRef = useRef(false);
+  const setViewportByUser = useCallback((next: React.SetStateAction<Viewport>) => {
+    userViewportChangedRef.current = true;
+    setViewport(next);
+  }, []);
+  // fitViewport is declared further down; the shortcut reaches it via a ref.
+  const fitViewportRef = useRef<() => void>(() => {});
+  const zoomCommands = useMemo(() => {
+    const workspaceSize = () => ({
+      w: workspaceRef.current?.clientWidth ?? 0,
+      h: workspaceRef.current?.clientHeight ?? 0,
+    });
+    return {
+      fit: () => fitViewportRef.current(),
+      toSelection: () => {
+        const items = selectedLayerIds
+          .map((id) => {
+            const props = elementProperties[id];
+            return props ? { id, x: props.x, y: props.y, bounds: getElementBoundingBox(props) } : null;
+          })
+          .filter((item): item is NonNullable<typeof item> => item !== null);
+        const bounds = items.length > 0 ? getSelectionBounds(items) : null;
+        const { w, h } = workspaceSize();
+        if (!bounds || !w || !h) return;
+        setViewportByUser(fitBoundsToViewport(bounds, w, h));
+      },
+      actualSize: () => {
+        const { w, h } = workspaceSize();
+        setViewportByUser(
+          w && h
+            ? { zoom: 1, panX: (w - frameSize.width) / 2, panY: (h - frameSize.height) / 2 }
+            : { zoom: 1, panX: 0, panY: 0 },
+        );
+      },
+      zoomBy: (factor: number) => {
+        const { w, h } = workspaceSize();
+        setViewportByUser((current) => zoomAroundCenter(current, current.zoom * factor, w, h));
+      },
+    };
+  }, [selectedLayerIds, elementProperties, frameSize, setViewportByUser]);
+
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useKeyboardShortcuts({
     isEditingRef, handleCommitText, handleUndo, handleRedo,
@@ -346,7 +422,8 @@ export function EditorInner() {
     handleSmartDelete: layerOps.handleSmartDelete,
     setActiveTool, selectedShapeKind, setSelectedShapeKind, activeTool,
     selectedLayerId, selectedLayerIds, setSelectedLayerId, setSelectedLayerIds,
-    setViewport, setGridEnabled,
+    setViewport: setViewportByUser, setGridEnabled,
+    zoomCommands,
     onMoveStart: handleMoveStart,
     onMoveElement: handleMoveElement,
     handleSave,
@@ -406,13 +483,14 @@ export function EditorInner() {
   }, [elementProperties, layers, setIsEditingText, setSelectedLayerId, setSelectedLayerIds]);
 
   // ── Create shape element ─────────────────────────────────────────────────
-  const handleCreateShape = useCallback((kind: ShapeKind, x: number, y: number, width: number, height: number) => {
+  const handleCreateShape = useCallback((kind: ShapeKind, x: number, y: number, width: number, height: number, extra?: { lineDirection?: ShapeElementProperties["lineDirection"] }) => {
     const tempId = `shape-${Date.now()}`;
     const kindName = kind.charAt(0).toUpperCase() + kind.slice(1);
     const newLayer: LayerType = { id: tempId, name: kindName, type: "shape", locked: false, visible: true, active: true };
     const newProps: ShapeElementProperties = {
       type: "shape", kind, x, y, width, height, fill: "#8b5cf6", stroke: "rgba(255,255,255,0.2)", strokeWidth: 1,
       cornerRadius: kind === "rect" ? 8 : undefined, opacity: 1,
+      ...(kind === "line" && extra?.lineDirection ? { lineDirection: extra.lineDirection } : {}),
     };
     saveToHistory();
     selectLayer(tempId, false);
@@ -440,7 +518,7 @@ export function EditorInner() {
   // ── Bulk property updates for multi-selections (B10) ─────────────────────
   const handleBulkUpdateProperties = useCallback((updates: Partial<ElementProperties>) => {
     if (selectedLayerIds.length === 0) return;
-    saveToHistory();
+    checkpoint(`bulk:${selectedLayerIds.join(",")}:${Object.keys(updates).sort().join(",")}`);
     setElementProperties((prev) => {
       const next = { ...prev };
       for (const id of selectedLayerIds) {
@@ -494,7 +572,22 @@ export function EditorInner() {
       }
       return next;
     });
-  }, [selectedLayerIds, saveToHistory, setElementProperties]);
+  }, [selectedLayerIds, checkpoint, setElementProperties]);
+
+  // ── Per-layer updates as one undo step (multi-select bounds, flips) ───────
+  const handleUpdateManyProperties = useCallback((updates: Record<string, Partial<ElementProperties>>) => {
+    const ids = Object.keys(updates);
+    if (ids.length === 0) return;
+    const keys = [...new Set(ids.flatMap((id) => Object.keys(updates[id])))].sort();
+    checkpoint(`many:${ids.sort().join(",")}:${keys.join(",")}`);
+    setElementProperties((prev) => {
+      const next = { ...prev };
+      for (const id of ids) {
+        if (next[id]) next[id] = { ...next[id], ...updates[id] } as ElementProperties;
+      }
+      return next;
+    });
+  }, [checkpoint, setElementProperties]);
 
   // ── Resize ────────────────────────────────────────────────────────────────
   const handleResizeElement = useCallback((id: string, x: number, y: number, width: number, height: number) => {
@@ -612,6 +705,8 @@ export function EditorInner() {
 
   // ── Update properties ────────────────────────────────────────────────────
   const handleUpdateProperties = useCallback((id: string, updates: Partial<ElementProperties>) => {
+    // Every inspector edit is undoable; bursts on the same field coalesce.
+    checkpoint(`props:${id}:${Object.keys(updates).sort().join(",")}`);
     setElementProperties((prev) => {
       const existing = prev[id];
       if (!existing) return prev;
@@ -683,7 +778,7 @@ export function EditorInner() {
       }
       return { ...prev, [id]: { ...existing, ...updates } as ElementProperties };
     });
-  }, [setElementProperties]);
+  }, [checkpoint, setElementProperties]);
 
   // ── Selection handlers ───────────────────────────────────────────────────
   const handleSelectLayer = useCallback((id: string | null) => {
@@ -760,14 +855,21 @@ export function EditorInner() {
     const availableHeight = Math.max(workspace.clientHeight - padding, 1);
     const zoom = clampZoom(Math.min(availableWidth / frameSize.width, availableHeight / frameSize.height));
     setViewport({ zoom, panX: (workspace.clientWidth - frameSize.width * zoom) / 2, panY: (workspace.clientHeight - frameSize.height * zoom) / 2 });
+    // Back in "fit" mode: workspace resizes keep the frame fitted again.
+    userViewportChangedRef.current = false;
   }, [frameSize]);
+  useEffect(() => { fitViewportRef.current = fitViewport; }, [fitViewport]);
 
   useEffect(() => {
     if (!isProjectActive) return;
     fitViewport();
     const workspace = workspaceRef.current;
     if (!workspace || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(fitViewport);
+    // Re-fit on workspace resize only until the user zooms or pans (or the
+    // frame size changes, which re-runs this effect and fits again).
+    const observer = new ResizeObserver(() => {
+      if (!userViewportChangedRef.current) fitViewport();
+    });
     observer.observe(workspace);
     return () => observer.disconnect();
   }, [fitViewport, isProjectActive]);
@@ -797,9 +899,9 @@ export function EditorInner() {
       const pan = workspacePanStateRef.current;
       if (!pan) return;
       e.preventDefault();
-      setViewport(updatePan(pan, e.clientX, e.clientY, viewport));
+      setViewportByUser(updatePan(pan, e.clientX, e.clientY, viewport));
     },
-    [viewport, setViewport],
+    [viewport, setViewportByUser],
   );
 
   const handleWorkspaceMouseUp = useCallback(() => {
@@ -865,10 +967,7 @@ export function EditorInner() {
                 onClick={() => {
                   const w = parseInt(customWidth) || 800;
                   const h = parseInt(customHeight) || 200;
-                  setFrameSize({ width: w, height: h });
-                  setHistory({ past: [], future: [] });
-                  markClean();
-                  setIsProjectActive(true);
+                  startFreshDocument(w, h);
                 }}
                 className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-medium text-sm rounded-md shadow-lg shadow-blue-500/20 transition-all cursor-pointer border border-blue-500/50"
               >Create Blank Canvas</button>
@@ -884,7 +983,7 @@ export function EditorInner() {
                 ].map((t) => (
                   <button
                     key={t.name}
-                    onClick={() => { setFrameSize({ width: t.w, height: t.h }); setHistory({ past: [], future: [] }); markClean(); setIsProjectActive(true); }}
+                    onClick={() => startFreshDocument(t.w, t.h)}
                     className="flex justify-between items-center bg-zinc-950 hover:bg-zinc-800/80 p-3 rounded-md border border-white/5 transition-all text-left group cursor-pointer"
                   >
                     <div>
@@ -962,11 +1061,14 @@ export function EditorInner() {
       elementProperties={elementProperties}
       onUpdateProperties={handleUpdateProperties}
       onBulkUpdateProperties={handleBulkUpdateProperties}
+      onUpdateMany={handleUpdateManyProperties}
+      onCheckpoint={checkpoint}
       onPropertiesStart={handlePropertiesStart}
       onCanvasResizeStart={handleCanvasResizeStart}
       onMoveElement={handleMoveElement}
       onAlignmentStart={handleAlignmentStart}
       onLayerContextAction={handleLayerContextAction}
+      layerPanelActions={layerPanelActions}
       onCanvasSettingsOpen={handleClearSelection}
       documentRef={persistenceDocRef}
       onInsertComponent={handleInsertComponentById}
@@ -1021,7 +1123,8 @@ export function EditorInner() {
             editingContent={editingContent} editingLayerId={editingLayerId}
             onEditingContentChange={setEditingContent}
             onCommitText={handleCommitText}
-            viewport={viewport} onViewportChange={setViewport}
+            viewport={viewport} onViewportChange={setViewportByUser}
+            onDuplicateForDrag={layerOps.handleDuplicateForDrag}
             gridEnabled={gridEnabled} snapEnabled={snapEnabled} gridSize={10}
             previewAnimation={previewAnimation} scrubTime={scrubTime}
             selectedVertex={selectedVertex}
@@ -1030,14 +1133,14 @@ export function EditorInner() {
 
         <ViewportControls
           zoom={viewport.zoom} gridEnabled={gridEnabled} snapEnabled={snapEnabled}
-          onZoomIn={() => setViewport((current) => {
+          onZoomIn={() => setViewportByUser((current) => {
             const ws = workspaceRef.current; const wsW = ws?.clientWidth ?? 0; const wsH = ws?.clientHeight ?? 0;
             const newZoom = clampZoom(current.zoom * 1.1);
             if (!wsW || !wsH) return { ...current, zoom: newZoom };
             const wx = (wsW / 2 - current.panX) / current.zoom; const wy = (wsH / 2 - current.panY) / current.zoom;
             return { zoom: newZoom, panX: wsW / 2 - wx * newZoom, panY: wsH / 2 - wy * newZoom };
           })}
-          onZoomOut={() => setViewport((current) => {
+          onZoomOut={() => setViewportByUser((current) => {
             const ws = workspaceRef.current; const wsW = ws?.clientWidth ?? 0; const wsH = ws?.clientHeight ?? 0;
             const newZoom = clampZoom(current.zoom * 0.9);
             if (!wsW || !wsH) return { ...current, zoom: newZoom };
@@ -1047,7 +1150,7 @@ export function EditorInner() {
           onFit={fitViewport}
           onToggleGrid={() => setGridEnabled((e) => !e)}
           onToggleSnap={() => setSnapEnabled((e) => !e)}
-          onZoomTo={(z) => setViewport((current) => {
+          onZoomTo={(z) => setViewportByUser((current) => {
             const ws = workspaceRef.current; const wsW = ws?.clientWidth ?? 0; const wsH = ws?.clientHeight ?? 0;
             const newZoom = clampZoom(z);
             if (!wsW || !wsH) return { ...current, zoom: newZoom };
@@ -1065,7 +1168,7 @@ export function EditorInner() {
           hasClipboard={hasClipboard || clipboardReadable}
           clipboardCount={clipboardCount}
           onClose={() => setCanvasContextMenu(null)}
-          onAction={handleLayerContextAction}
+          onAction={(actionId) => handleLayerContextAction(actionId, canvasContextMenu.anchorLayerId)}
         />
       )}
 

@@ -4,6 +4,7 @@ import { type GradientFill, gradientId, gradientUrl, isGradient } from "../../li
 import { TEXT_ANCHOR_MAP, getTextVerticalOffset, getTextXWithinBox } from "../../lib/editor/textAlign";
 import { getTextLines, getLineHeight, getTextBlockHeight, getTextBlockWidth } from "../../lib/editor/textMeasure";
 import { pointsToSvgD, segmentMidpoint } from "../../lib/editor/pathUtils";
+import { getLockedLayerIds } from "../../lib/editor/geometry";
 
 // ── Re-export extracted modules for backward compatibility ────────────────────
 export type { AnimationConfig } from "./animationPresets";
@@ -15,8 +16,11 @@ export { trianglePath, starPath, hexagonPath } from "./shapeHelpers";
 // ── Internal imports from extracted modules ───────────────────────────────────
 import type { TextElementProperties, ShapeElementProperties, ImageElementProperties, PathElementProperties, ElementProperties } from "./elementTypes";
 import { getElementBoundingBox } from "./boundingBox";
-import { trianglePath, starPath, hexagonPath } from "./shapeHelpers";
-import { ANIMATION_PRESETS, buildAnimationCSS } from "./animationPresets";
+import { trianglePath, starPath, hexagonPath, getLineEndpoints } from "./shapeHelpers";
+import { resolveLayerAnimation } from "./animationPresets";
+import { buildEffectsFilter, effectWrapperAttrs, rectEllipseNodes, shapeOutlineNode } from "../../lib/export/visualEffects";
+import { sanitizeStyleText } from "../../lib/export/xml";
+import { svgNodeToReact } from "./svgNodeReact";
 
 // ─── Element Renderers ───────────────────────────────────────────────────────
 
@@ -179,13 +183,10 @@ const ShapeElement = memo(function ShapeElement({
   let shapeEl: React.ReactNode;
   let hitEl: React.ReactNode;
 
-  if (kind === "rect") {
-    shapeEl = <rect x={x} y={y} width={width} height={height} fill={fillValue} stroke={stroke} strokeWidth={strokeWidth} strokeLinecap={cap} strokeLinejoin={join} strokeDasharray={strokeDashArray || undefined} opacity={opacity} rx={cornerRadius ?? 4} />;
-    hitEl = <rect x={x} y={y} width={width} height={height} fill="transparent" />;
-  } else if (kind === "circle") {
-    const rx = width / 2;
-    const ry = height / 2;
-    shapeEl = <ellipse cx={x + rx} cy={y + ry} rx={rx} ry={ry} fill={fillValue} stroke={stroke} strokeWidth={strokeWidth} strokeLinecap={cap} strokeLinejoin={join} opacity={opacity} />;
+  if (kind === "rect" || kind === "circle") {
+    // Shared with export: independent corner radii + stroke position.
+    const nodes = rectEllipseNodes({ ...properties, cornerRadius }, fillValue) ?? [];
+    shapeEl = <g opacity={opacity}>{nodes.map((n, i) => svgNodeToReact(n, i))}</g>;
     hitEl = <rect x={x} y={y} width={width} height={height} fill="transparent" />;
   } else if (kind === "triangle") {
     shapeEl = <path d={trianglePath(x, y, width, height)} fill={fillValue} stroke={stroke} strokeWidth={strokeWidth} strokeLinecap={cap} strokeLinejoin={join} opacity={opacity} />;
@@ -197,9 +198,10 @@ const ShapeElement = memo(function ShapeElement({
     shapeEl = <path d={hexagonPath(x, y, width, height)} fill={fillValue} stroke={stroke} strokeWidth={strokeWidth} strokeLinecap={cap} strokeLinejoin={join} opacity={opacity} />;
     hitEl = <rect x={x} y={y} width={width} height={height} fill="transparent" />;
   } else if (kind === "line") {
-    const midY = y + height / 2;
-    shapeEl = <line x1={x} y1={midY} x2={x + width} y2={midY} stroke={stroke || fillValue} strokeWidth={Math.max(strokeWidth, 2)} strokeLinecap={cap} strokeDasharray={strokeDashArray || undefined} opacity={opacity} />;
-    hitEl = <rect x={x} y={midY - 6} width={width} height={12} fill="transparent" />;
+    const { x1, y1, x2, y2 } = getLineEndpoints(properties);
+    shapeEl = <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={stroke || fillValue} strokeWidth={Math.max(strokeWidth, 2)} strokeLinecap={cap} strokeLinejoin={join} strokeDasharray={strokeDashArray || undefined} opacity={opacity} />;
+    // Hit target follows the actual (possibly diagonal) stroke.
+    hitEl = <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="transparent" strokeWidth={12} strokeLinecap="round" data-hit="line" />;
   } else {
     shapeEl = null;
     hitEl = null;
@@ -473,14 +475,17 @@ export default function ElementsRenderer({
 }: ElementsRendererProps) {
   const selectedSet = new Set(selectedLayerIds ?? (selectedLayerId ? [selectedLayerId] : []));
   const rubberBandSet = new Set(rubberBandHighlightedIds ?? []);
+  // Locked layers (directly or via a locked ancestor group) are not
+  // hit-testable: pointer events fall through to whatever is underneath.
+  const lockedSet = getLockedLayerIds(layers);
 
   function renderMaskClipContent(child: LayerType): React.ReactNode {
     const props = elementProperties[child.id];
     if (!props) return null;
     if (props.type === "shape") {
-      const { kind, x, y, width, height, cornerRadius } = props;
-      if (kind === "rect") return <rect x={x} y={y} width={width} height={height} rx={cornerRadius ?? 4} />;
-      if (kind === "circle") return <ellipse cx={x + width / 2} cy={y + height / 2} rx={width / 2} ry={height / 2} />;
+      const { kind, x, y, width, height } = props;
+      const outline = shapeOutlineNode(props);
+      if (outline) return svgNodeToReact(outline);
       if (kind === "triangle") return <path d={trianglePath(x, y, width, height)} />;
       if (kind === "star") return <path d={starPath(x, y, width, height)} />;
       if (kind === "hexagon") return <path d={hexagonPath(x, y, width, height)} />;
@@ -560,6 +565,7 @@ export default function ElementsRenderer({
           className="canvas-element"
           onMouseDown={(e) => onElementMouseDown(e, layer.id)}
           onContextMenu={(e) => onElementContextMenu?.(e, layer.id)}
+          style={lockedSet.has(layer.id) ? { pointerEvents: "none" } : undefined}
         >
           {isEmpty && (() => {
             const pw = 140;
@@ -634,8 +640,11 @@ export default function ElementsRenderer({
         onMouseEnter={() => onElementHover?.(layer.id)}
         onMouseLeave={() => onElementHover?.(null)}
         onContextMenu={(e) => onElementContextMenu?.(e, layer.id)}
-        style={{ pointerEvents: isEditing ? "none" : undefined, animation: animStyle ?? undefined, animationDelay: animDelay ?? undefined, animationPlayState: scrubTime != null ? "paused" : undefined }}
+        data-locked={lockedSet.has(layer.id) ? "true" : undefined}
+        style={{ pointerEvents: isEditing || lockedSet.has(layer.id) ? "none" : undefined, animation: animStyle ?? undefined, animationDelay: animDelay ?? undefined, animationPlayState: scrubTime != null ? "paused" : undefined, ...(animStyle ? { transformBox: "fill-box", transformOrigin: "center" } : {}) }}
       >
+        {/* Effects / blend mode / text opacity (shared helpers with export) */}
+        <g filter={effectWrapperAttrs(layer.id, props)?.filter as string | undefined} opacity={props.type === "text" ? props.opacity : undefined} style={props.blendMode && props.blendMode !== "normal" ? { mixBlendMode: props.blendMode } : undefined}>
         {props.type === "text" ? (
           <TextElement properties={props} isSelected={isSelected} isRubberBandHighlighted={isRubberBandHighlighted} suppressSelectionOutline={suppressSelectionOutline} isEditing={isEditing} />
         ) : props.type === "image" ? (
@@ -645,6 +654,7 @@ export default function ElementsRenderer({
         ) : (
           <ShapeElement properties={props} isSelected={isSelected} isRubberBandHighlighted={isRubberBandHighlighted} suppressSelectionOutline={suppressSelectionOutline} layerId={layer.id} />
         )}
+        </g>
         {hoverBox && (
           <g transform={hoverTransform} className="pointer-events-none">
             <rect x={hoverBox.x} y={hoverBox.y} width={hoverBox.width} height={hoverBox.height} fill="none" stroke="#60a5fa" strokeWidth={1} strokeDasharray="3 3" rx={2} />
@@ -664,21 +674,23 @@ export default function ElementsRenderer({
     }
   }
 
+  const filterDefs: React.ReactNode[] = [];
+  for (const layer of layers) {
+    const node = buildEffectsFilter(layer.id, elementProperties[layer.id]?.effects);
+    if (node) filterDefs.push(svgNodeToReact(node, `fx-${layer.id}`));
+  }
+
   const animationKeyframesCSS: string[] = [];
   if (previewAnimation) {
     const seenNames = new Set<string>();
     for (const layer of layers) {
       if (!layer.visible) continue;
-      const props = elementProperties[layer.id];
-      const anim = props?.animation;
-      if (anim && !seenNames.has(anim.name)) {
-        seenNames.add(anim.name);
-        if (anim.customKeyframes) {
-          animationKeyframesCSS.push(anim.customKeyframes);
-        } else {
-          const preset = Object.entries(ANIMATION_PRESETS).find(([, p]) => p.defaults.name === anim.name);
-          if (preset) animationKeyframesCSS.push(preset[1].keyframesCSS);
-        }
+      const anim = elementProperties[layer.id]?.animation;
+      if (!anim) continue;
+      const resolved = resolveLayerAnimation(layer.id, anim);
+      if (resolved.keyframesCSS && !seenNames.has(resolved.name)) {
+        seenNames.add(resolved.name);
+        animationKeyframesCSS.push(sanitizeStyleText(resolved.keyframesCSS));
       }
     }
   }
@@ -687,7 +699,7 @@ export default function ElementsRenderer({
     const props = elementProperties[layerId];
     const anim = props?.animation;
     if (!anim || !previewAnimation) return undefined;
-    const base = buildAnimationCSS(anim);
+    const base = resolveLayerAnimation(layerId, anim).css;
     if (scrubTime != null) return `${base} paused`;
     return base;
   };
@@ -702,9 +714,10 @@ export default function ElementsRenderer({
 
   return (
     <>
-      {(gradientDefs.length > 0 || animationKeyframesCSS.length > 0 || maskClipPaths.length > 0) && (
+      {(gradientDefs.length > 0 || animationKeyframesCSS.length > 0 || maskClipPaths.length > 0 || filterDefs.length > 0) && (
         <defs>
           {gradientDefs}
+          {filterDefs}
           {maskClipPaths}
           {animationKeyframesCSS.length > 0 && <style>{`\n${animationKeyframesCSS.join("\n")}\n`}</style>}
         </defs>

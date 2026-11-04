@@ -231,7 +231,12 @@ export function snapPosition(
   return { x: snap(position.x, "x"), y: snap(position.y, "y") };
 }
 
-export function clampZoom(zoom: number, min = 0.1, max = 4): number {
+/** Maximum canvas zoom (400%). */
+export const MAX_ZOOM = 4;
+/** Minimum canvas zoom (10%). */
+export const MIN_ZOOM = 0.1;
+
+export function clampZoom(zoom: number, min = MIN_ZOOM, max = MAX_ZOOM): number {
   if (!Number.isFinite(zoom)) return 1;
   return Math.min(max, Math.max(min, zoom));
 }
@@ -251,6 +256,77 @@ export function zoomAtPoint(viewport: Viewport, point: Point, requestedZoom: num
   const zoom = clampZoom(requestedZoom);
   const worldPoint = screenToWorld(point, { ...viewport, zoom: currentZoom });
   return { zoom, panX: point.x - worldPoint.x * zoom, panY: point.y - worldPoint.y * zoom };
+}
+
+/**
+ * Viewport that fits `bounds` (world space) centered inside a workspace of
+ * `workspaceWidth × workspaceHeight` screen px, leaving `padding` px around it.
+ * `maxZoom` caps the zoom (zoom-to-selection on a tiny element).
+ */
+export function fitBoundsToViewport(
+  bounds: Bounds,
+  workspaceWidth: number,
+  workspaceHeight: number,
+  padding = 96,
+  maxZoom = MAX_ZOOM,
+): Viewport {
+  const availableWidth = Math.max(workspaceWidth - padding, 1);
+  const availableHeight = Math.max(workspaceHeight - padding, 1);
+  const zoom = clampZoom(
+    Math.min(
+      availableWidth / Math.max(bounds.width, 1),
+      availableHeight / Math.max(bounds.height, 1),
+      maxZoom,
+    ),
+  );
+  const cx = bounds.x + bounds.width / 2;
+  const cy = bounds.y + bounds.height / 2;
+  return { zoom, panX: workspaceWidth / 2 - cx * zoom, panY: workspaceHeight / 2 - cy * zoom };
+}
+
+/** Zoom by `factor` around the center of the workspace (keyboard +/-, 100%). */
+export function zoomAroundCenter(
+  viewport: Viewport,
+  requestedZoom: number,
+  workspaceWidth: number,
+  workspaceHeight: number,
+): Viewport {
+  if (!workspaceWidth || !workspaceHeight) return { ...viewport, zoom: clampZoom(requestedZoom) };
+  return zoomAtPoint(viewport, { x: workspaceWidth / 2, y: workspaceHeight / 2 }, requestedZoom);
+}
+
+/** Structural equality for snap guide lists (avoids redundant re-renders). */
+export function sameGuideLines(a: readonly SnapGuideLine[], b: readonly SnapGuideLine[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  return a.every((g, i) => {
+    const o = b[i];
+    return g.orientation === o.orientation && g.value === o.value && g.from === o.from && g.to === o.to;
+  });
+}
+
+/**
+ * Ids of every layer that is locked, either directly or because one of its
+ * ancestor groups is locked. Locked layers are not hit-testable, selectable
+ * or transformable on the canvas.
+ */
+export function getLockedLayerIds(
+  layers: readonly { id: string; parentId?: string | null; locked?: boolean }[],
+): Set<string> {
+  const byId = new Map(layers.map((l) => [l.id, l]));
+  const memo = new Map<string, boolean>();
+  const isLocked = (id: string, depth = 0): boolean => {
+    const cached = memo.get(id);
+    if (cached !== undefined) return cached;
+    const layer = byId.get(id);
+    if (!layer || depth > 64) return false;
+    const result = !!layer.locked || (layer.parentId ? isLocked(layer.parentId, depth + 1) : false);
+    memo.set(id, result);
+    return result;
+  };
+  const out = new Set<string>();
+  for (const layer of layers) if (isLocked(layer.id)) out.add(layer.id);
+  return out;
 }
 
 // ─── Hierarchical coordinate helpers for groups ──────────────────────────────

@@ -96,7 +96,7 @@ describe("buildLayerTreeIndex", () => {
 // ─── visibleLayerRows ─────────────────────────────────────────────────────────
 
 describe("visibleLayerRows", () => {
-  it("emits rows depth-first with 1-based levels and child flags", () => {
+  it("emits rows depth-first, frontmost sibling first, with 1-based levels and child flags", () => {
     const index = buildLayerTreeIndex(fixture());
     const rows = visibleLayerRows(
       index.roots,
@@ -105,13 +105,14 @@ describe("visibleLayerRows", () => {
     );
 
     expect(rows.map((row) => [row.id, row.level, row.hasChildren])).toEqual([
-      ["root-a", 1, false],
+      // Document order is back-to-front; the panel lists the frontmost first.
+      ["root-b", 1, false],
       ["g1", 1, true],
-      ["child-a", 2, false],
+      ["child-b", 2, false],
       ["sub", 2, true],
       ["grandchild", 3, false],
-      ["child-b", 2, false],
-      ["root-b", 1, false],
+      ["child-a", 2, false],
+      ["root-a", 1, false],
     ]);
   });
 
@@ -119,15 +120,15 @@ describe("visibleLayerRows", () => {
     const index = buildLayerTreeIndex(fixture());
 
     expect(idsOf(visibleLayerRows(index.roots, index.byParent, new Set()))).toEqual([
-      "root-a",
-      "g1",
       "root-b",
+      "g1",
+      "root-a",
     ]);
 
     // g1 is open but its nested group `sub` is not.
     expect(
       idsOf(visibleLayerRows(index.roots, index.byParent, new Set(["g1"]))),
-    ).toEqual(["root-a", "g1", "child-a", "sub", "child-b", "root-b"]);
+    ).toEqual(["root-b", "g1", "child-b", "sub", "child-a", "root-a"]);
   });
 
   it("emits each id at most once", () => {

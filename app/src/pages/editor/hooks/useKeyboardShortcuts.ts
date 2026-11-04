@@ -1,6 +1,6 @@
 import { useEffect, type RefObject } from "react";
 import type { EditorTool, LayerType, ShapeSubTool } from "../../../context/EditorContext";
-import { clampZoom } from "../../../lib/editor/geometry";
+import { clampZoom, getLockedLayerIds } from "../../../lib/editor/geometry";
 import { computeSelectionCapabilities } from "../../../lib/editor/selectionCapabilities";
 import {
   buildLayerCommands,
@@ -12,6 +12,9 @@ import { matchesShortcut } from "../../../lib/editor/commands/shortcuts";
 import type { ElementProperties } from "../../../components/editor-canvas/ElementsRenderer";
 
 const SHAPE_CYCLE: ShapeSubTool[] = ["rect", "circle", "triangle", "star", "hexagon", "line"];
+
+/** Bare-letter tool/view shortcuts handled in the switch below. */
+const TOOL_LETTER_KEYS = new Set(["v", "t", "p", "r", "o", "l", "h", "g"]);
 
 export interface KeyboardShortcutHandlers {
   isEditingRef: RefObject<boolean>;
@@ -39,6 +42,15 @@ export interface KeyboardShortcutHandlers {
   setSelectedLayerIds: React.Dispatch<React.SetStateAction<string[]>>;
   setViewport: React.Dispatch<React.SetStateAction<{ zoom: number; panX: number; panY: number }>>;
   setGridEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  /** Viewport commands (Figma): Shift+1 fit, Shift+2 zoom to selection,
+   *  Shift+0 / Ctrl+0 100% centered, +/- zoom around the viewport centre.
+   *  When omitted, the legacy setViewport fallbacks are used. */
+  zoomCommands?: {
+    fit: () => void;
+    toSelection: () => void;
+    actualSize: () => void;
+    zoomBy: (factor: number) => void;
+  };
   onMoveStart?: () => void;
   onMoveElement?: (id: string, x: number, y: number) => void;
   /** Currently selected path node (move tool) — Delete removes the node instead of the layer. */
@@ -85,6 +97,7 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
     setSelectedLayerIds,
     setViewport,
     setGridEnabled,
+    zoomCommands,
     onMoveStart,
     onMoveElement,
     selectedVertex,
@@ -124,7 +137,10 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
 
     // ── Nudge helper (defined inside effect to avoid stale-closure issues) ──
     const nudgeSelection = (dx: number, dy: number) => {
-      const ids = selectedLayerIds.length > 0 ? selectedLayerIds : (selectedLayerId ? [selectedLayerId] : []);
+      // Locked layers (or children of locked groups) never move.
+      const locked = getLockedLayerIds(layers);
+      const ids = (selectedLayerIds.length > 0 ? selectedLayerIds : (selectedLayerId ? [selectedLayerId] : []))
+        .filter((id) => !locked.has(id));
       if (ids.length === 0) return;
       onMoveStart?.();
       for (const id of ids) {
@@ -151,13 +167,44 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
       const target = e.target;
       if (
         target instanceof Element &&
-        target.closest("input, textarea, select, [contenteditable='true']")
+        (target.closest("input, textarea, select, [contenteditable='true'], [contenteditable='']") ||
+          (target instanceof HTMLElement && target.isContentEditable))
       ) {
         return;
       }
 
       // Check for Ctrl/Cmd + key combinations
       const isCtrlPressed = e.ctrlKey || e.metaKey;
+
+      // ── Viewport zoom (Figma) ───────────────────────────────────────────────
+      // Matched on e.code because Shift changes e.key ("!", "@", ")").
+      if (zoomCommands && !e.altKey) {
+        if (e.shiftKey && !isCtrlPressed && e.code === "Digit1") {
+          e.preventDefault();
+          zoomCommands.fit();
+          return;
+        }
+        if (e.shiftKey && !isCtrlPressed && e.code === "Digit2") {
+          e.preventDefault();
+          zoomCommands.toSelection();
+          return;
+        }
+        if (e.code === "Digit0" || e.key === "0") {
+          e.preventDefault();
+          zoomCommands.actualSize();
+          return;
+        }
+        if (e.key === "+" || e.key === "=" || e.code === "NumpadAdd") {
+          e.preventDefault();
+          zoomCommands.zoomBy(1.25);
+          return;
+        }
+        if (e.key === "-" || e.key === "_" || e.code === "NumpadSubtract") {
+          e.preventDefault();
+          zoomCommands.zoomBy(0.8);
+          return;
+        }
+      }
 
       // ── Arrow key nudge (B2) ──────────────────────────────────────────
       if (e.key.startsWith("Arrow")) {
@@ -199,6 +246,15 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
       if (matchedBinding) {
         e.preventDefault();
         runLayerCommand(layerCommands, matchedBinding.command);
+        return;
+      }
+
+      // Single-letter tool keys only fire bare (or with Shift): Ctrl+P, Ctrl+R,
+      // Ctrl+T, Alt+letter … belong to the browser/OS and must reach it.
+      if (
+        TOOL_LETTER_KEYS.has(e.key.toLowerCase()) &&
+        (e.ctrlKey || e.metaKey || e.altKey)
+      ) {
         return;
       }
 
@@ -394,6 +450,7 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
     setSelectedLayerIds,
     setViewport,
     setGridEnabled,
+    zoomCommands,
     onMoveStart,
     onMoveElement,
     selectedVertex,

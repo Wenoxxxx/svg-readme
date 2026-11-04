@@ -4,12 +4,14 @@ import {
   hexToHsb,
   hsbToHex,
   normalizeHex,
-  isValidHex,
+
   hexToRgb,
   hexToHsl,
   hexToRgba,
   rgbToHex,
   hslToHex,
+  keepAlpha,
+  parseStrictHex,
 } from "../../lib/color";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -19,9 +21,20 @@ interface ColorPickerPopoverProps {
   value: string;
   /** Called when user picks a color */
   onChange: (hex: string) => void;
+  /** Colors already used in the document, shown as a quick-pick row. */
+  documentColors?: string[];
+  /** Accessible label for the trigger button. */
+  ariaLabel?: string;
 }
 
 type ColorFormat = "rgb" | "hsl" | "hsb";
+
+/** Minimal typing for the (Chromium-only) EyeDropper API. */
+type EyeDropperCtor = new () => { open: () => Promise<{ sRGBHex: string }> };
+const getEyeDropper = (): EyeDropperCtor | null =>
+  typeof window !== "undefined" && "EyeDropper" in window
+    ? ((window as unknown as { EyeDropper: EyeDropperCtor }).EyeDropper)
+    : null;
 
 // ─── Preset palette (like open-pencil's swatch grid but simpler) ────────────────
 // A curated set of colors useful for SVG banners on dark backgrounds.
@@ -59,10 +72,12 @@ function ColorPickerPanel({
   value,
   onChange,
   onClose,
+  documentColors,
 }: {
   value: string;
   onChange: (hex: string) => void;
   onClose: () => void;
+  documentColors?: string[];
 }) {
   const [format, setFormat] = useState<ColorFormat>("hsb");
 
@@ -267,54 +282,85 @@ function ColorPickerPanel({
   // ── Preset click ───────────────────────────────────────────────────────────
   const handlePresetClick = useCallback(
     (hex: string) => {
-      onChange(hex);
+      // Swatches carry RGB only: keep the current alpha.
+      onChange(keepAlpha(value, hex));
       onClose();
     },
-    [onChange, onClose],
+    [onChange, onClose, value],
   );
+
+  // Eyedropper (feature-detected; Chromium only)
+  const EyeDropperApi = getEyeDropper();
+  const handleEyeDropper = useCallback(async () => {
+    const Ctor = getEyeDropper();
+    if (!Ctor) return;
+    try {
+      const { sRGBHex } = await new Ctor().open();
+      const n = parseStrictHex(sRGBHex);
+      if (n) {
+        const next = keepAlpha(value, n);
+        const hsb = hexToHsb(next);
+        setHue(hsb.h);
+        setSat(hsb.s);
+        setBri(hsb.b);
+        setHexInput(next.slice(0, 7));
+        onChange(next);
+      }
+    } catch {
+      /* user cancelled */
+    }
+  }, [onChange, value]);
 
   // ── Hex input ──────────────────────────────────────────────────────────────
   const handleHexInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const raw = e.target.value;
       setHexInput(raw);
-      if (isValidHex(raw)) {
-        const n = normalizeHex(raw);
-        if (n) {
-          const hsb = hexToHsb(n);
-          setHue(hsb.h);
-          setSat(hsb.s);
-          setBri(hsb.b);
-        }
+      const t = raw.trim();
+      const n = parseStrictHex(t.startsWith("#") ? t : `#${t}`);
+      if (n) {
+        const hsb = hexToHsb(n);
+        setHue(hsb.h);
+        setSat(hsb.s);
+        setBri(hsb.b);
+        if (n.length === 9) setAlpha(hexToRgba(n).a);
       }
     },
     [],
   );
 
+  /** Strict #rgb / #rrggbb / #rrggbbaa (leading # optional while typing). */
+  const parseHexField = useCallback((s: string): string | null => {
+    const t = s.trim();
+    const n = parseStrictHex(t.startsWith("#") ? t : `#${t}`);
+    if (!n) return null;
+    if (n.length === 9) return n; // explicit alpha wins
+    const { r, g, b } = hexToRgb(n);
+    return rgbToHex(r, g, b, alpha);
+  }, [alpha]);
+
   const handleHexInputBlur = useCallback(() => {
-    const n = normalizeHex(hexInput);
+    const n = parseHexField(hexInput);
     if (n) {
-      const { r, g, b } = hexToRgb(n);
-      commitColor(rgbToHex(r, g, b, alpha));
+      commitColor(n);
       setHexInput(n.slice(0, 7));
     } else {
       // Revert to the current valid color
       setHexInput(value.slice(0, 7));
     }
-  }, [hexInput, commitColor, alpha, value]);
+  }, [hexInput, commitColor, parseHexField, value]);
 
   const handleHexInputKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === "Enter") {
-        const n = normalizeHex(hexInput);
+        const n = parseHexField(hexInput);
         if (n) {
-          const { r, g, b } = hexToRgb(n);
-          onChange(rgbToHex(r, g, b, alpha));
+          onChange(n);
           onClose();
         }
       }
     },
-    [hexInput, onChange, alpha, onClose],
+    [hexInput, onChange, parseHexField, onClose],
   );
 
   // ── Format channel fields (open-pencil: FormatControls) ────────────────────
@@ -426,6 +472,33 @@ function ColorPickerPanel({
           style={{ background: previewRgba }}
         />
       </div>
+
+      {/* Document colors + eyedropper */}
+      {((documentColors && documentColors.length > 0) || EyeDropperApi) && (
+        <div className="flex items-center gap-1.5 flex-wrap" data-testid="document-colors">
+          {EyeDropperApi && (
+            <button
+              type="button"
+              onClick={handleEyeDropper}
+              title="Pick color from screen"
+              aria-label="Eyedropper"
+              className="w-5 h-5 rounded-sm border border-white/10 text-zinc-400 hover:text-white flex items-center justify-center"
+            >
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M10 2l4 4-2 2-4-4zM9 5L3 11v2h2l6-6" /></svg>
+            </button>
+          )}
+          {documentColors?.map((hex) => (
+            <button
+              key={`doc-${hex}`}
+              type="button"
+              onClick={() => handlePresetClick(hex)}
+              className="w-4 h-4 rounded-sm border border-white/10 cursor-pointer hover:scale-125 transition-transform shrink-0"
+              style={{ background: hex }}
+              title={`Document color ${hex}`}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Preset palette grid — like open-pencil's swatches */}
       <div className="grid grid-cols-10 gap-1.5">
@@ -587,7 +660,8 @@ function ColorPickerPanel({
           className="bg-transparent text-xs font-mono text-zinc-300 w-full outline-none"
           spellCheck={false}
           autoComplete="off"
-          maxLength={7}
+          maxLength={9}
+          aria-label="Hex color"
         />
       </div>
     </>
@@ -599,6 +673,8 @@ function ColorPickerPanel({
 export default function ColorPickerPopover({
   value,
   onChange,
+  documentColors,
+  ariaLabel,
 }: ColorPickerPopoverProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -698,6 +774,7 @@ export default function ColorPickerPopover({
         ref={triggerRef}
         type="button"
         onClick={handleTriggerClick}
+        aria-label={ariaLabel}
         className="flex w-full items-center gap-2.5 rounded-md border border-white/5 bg-zinc-900 px-3 py-2.5 text-left hover:border-white/10 transition-all cursor-pointer"
         style={{ minWidth: 0 }}
       >
@@ -722,6 +799,7 @@ export default function ColorPickerPopover({
             value={value}
             onChange={onChange}
             onClose={() => setIsOpen(false)}
+            documentColors={documentColors}
           />
         </div>
       , document.body)}

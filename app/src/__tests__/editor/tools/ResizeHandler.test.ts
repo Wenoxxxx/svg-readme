@@ -29,24 +29,24 @@ describe("updateResize — B3 modifiers", () => {
   });
 
   it("Alt resizes from the center — box re-centers on its original center (B3)", () => {
-    // Original center = (60, 45). Dragging br by (20, 10) yields 120×60,
-    // which must be re-centered: x = 60 - 60 = 0, y = 45 - 30 = 15.
+    // Original center = (60, 45). Both edges move, so dragging br by (20, 10)
+    // grows the box by 2·d → 140×70, centered: x = 60 - 70, y = 45 - 35.
     const result = updateResize(makeState("br"), 20, 10, false, true);
-    expect(result).toEqual({ x: 0, y: 15, width: 120, height: 60 });
-  });
-
-  it("Shift+Alt keeps the aspect ratio AND centers (B3)", () => {
-    // Aspect 2:1. br drag (40, 20) → 140×70; centered on (60, 45):
-    // x = 60 - 70 = -10, y = 45 - 35 = 10.
-    const result = updateResize(makeState("br"), 40, 20, true, true);
     expect(result).toEqual({ x: -10, y: 10, width: 140, height: 70 });
   });
 
+  it("Shift+Alt keeps the aspect ratio AND centers (B3)", () => {
+    // Aspect 2:1. br drag (40, 20) → grows by 2·d → 180×90; centered on (60, 45):
+    // x = 60 - 90 = -30, y = 45 - 45 = 0.
+    const result = updateResize(makeState("br"), 40, 20, true, true);
+    expect(result).toEqual({ x: -30, y: 0, width: 180, height: 90 });
+  });
+
   it("Alt works from a left/top handle too — opposite edge stays fixed (B3)", () => {
-    // tl handle: drag (-30, -10) → width 130, height 60; centered on (60, 45):
-    // x = 60 - 65 = -5, y = 45 - 30 = 15.
+    // tl handle: drag (-30, -10) → width 100+60, height 50+20; centered on (60, 45):
+    // x = 60 - 80 = -20, y = 45 - 35 = 10.
     const result = updateResize(makeState("tl"), -30, -10, false, true);
-    expect(result).toEqual({ x: -5, y: 15, width: 130, height: 60 });
+    expect(result).toEqual({ x: -20, y: 10, width: 160, height: 70 });
   });
 
   it("Alt enforces minimum size before re-centering", () => {

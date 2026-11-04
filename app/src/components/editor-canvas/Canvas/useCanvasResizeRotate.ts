@@ -27,6 +27,19 @@ interface UseCanvasResizeRotateParams {
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
+/** Rendered box size (auto-width text is measured, like the overlay). */
+function getVisualSize(props: ElementProperties): { width: number; height: number } {
+  if (props.type === "text") {
+    try {
+      const box = getTextAutoBox(props as never, props.content);
+      return { width: box.width, height: box.height };
+    } catch {
+      return { width: typeof props.width === "number" ? props.width : 100, height: props.height };
+    }
+  }
+  return { width: typeof props.width === "number" ? props.width : 0, height: props.height };
+}
+
 /**
  * Provides resize and rotate mouse-down handlers for the Canvas overlay.
  * Handles both single-element and multi-selection (B3) resize/rotate.
@@ -136,10 +149,17 @@ export function useCanvasResizeRotate({
 
       if (multiResizable && multiBounds) {
         const initialRotations: Record<string, number> = {};
+        const initialPositions: Record<string, { x: number; y: number; cx: number; cy: number }> = {};
         for (const id of selectedLayerIds) {
           const props = elementProperties[id];
           initialRotations[id] =
             (props && "rotation" in props && typeof props.rotation === "number" ? props.rotation : 0) ?? 0;
+          if (props) {
+            // Each element rotates about its own box center; record it so the
+            // element can orbit the selection center.
+            const size = getVisualSize(props);
+            initialPositions[id] = { x: props.x, y: props.y, cx: props.x + size.width / 2, cy: props.y + size.height / 2 };
+          }
         }
         const cx = multiBounds.x + multiBounds.width / 2;
         const cy = multiBounds.y + multiBounds.height / 2;
@@ -157,6 +177,7 @@ export function useCanvasResizeRotate({
               initialRotation: 0,
               selectionIds: selectedLayerIds,
               initialRotations,
+              initialPositions,
             },
           }),
         }));

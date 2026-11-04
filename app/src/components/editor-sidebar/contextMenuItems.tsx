@@ -15,7 +15,10 @@ import {
   type LayerMenuItem,
 } from "../../lib/editor/commands/layerMenuLayout";
 import type { ShortcutPlatform } from "../../lib/editor/commands/shortcuts";
-import { computeSelectionCapabilities } from "../../lib/editor/selectionCapabilities";
+import {
+  computeSelectionCapabilities,
+  resolveCommandTargetId,
+} from "../../lib/editor/selectionCapabilities";
 import type { LayerType } from "../../context/EditorContext";
 import type { ElementProperties } from "../editor-canvas/ElementsRenderer";
 
@@ -106,10 +109,9 @@ export function buildSelectionContextMenu(options: {
   const selectedLayerIds = layers.filter((l) => l.active === true).map((l) => l.id);
   if (selectedLayerIds.length === 0) return [];
 
-  const targetId =
-    anchorLayerId && selectedLayerIds.includes(anchorLayerId)
-      ? anchorLayerId
-      : selectedLayerIds[0];
+  // Same resolution the dispatcher uses, so "Use as mask" / "Remove mask"
+  // describes exactly the layer the command will act on.
+  const targetId = resolveCommandTargetId(layers, selectedLayerIds, anchorLayerId);
   const target = layers.find((l) => l.id === targetId);
 
   const commands = buildLayerCommands({

@@ -8,6 +8,7 @@ import EditorTour from "../components/ui/EditorTour/EditorTour";
 import type { EditorTool, FrameSize } from "../context/EditorContext";
 import type { ElementProperties } from "../components/editor-canvas/ElementsRenderer";
 import type { DocumentState } from "../lib/designFile";
+import type { LayerPanelDocumentActions } from "../components/editor-sidebar/LayerPanel";
 
 interface EditorLayoutProps {
   children: ReactNode;
@@ -24,12 +25,18 @@ interface EditorLayoutProps {
   elementProperties?: Record<string, ElementProperties>;
   onUpdateProperties?: (id: string, updates: Partial<ElementProperties>) => void;
   onBulkUpdateProperties?: (updates: Partial<ElementProperties>) => void;
+  /** Per-layer updates applied as one undo step (multi-select bounds, flips). */
+  onUpdateMany?: (updates: Record<string, Partial<ElementProperties>>) => void;
+  /** Coalesced undo checkpoint (same key within 1s merges). */
+  onCheckpoint?: (key: string) => void;
   onPropertiesStart?: () => void;
   /** Fired before a canvas (frame) resize so the change lands in undo history. */
   onCanvasResizeStart?: () => void;
   onMoveElement?: (id: string, x: number, y: number) => void;
   onAlignmentStart?: () => void;
   onLayerContextAction?: (actionId: string, layerId: string) => void;
+  /** History/delete/add callbacks for the layer panel (every panel edit is undoable). */
+  layerPanelActions?: LayerPanelDocumentActions;
   /** Live document state ref for the navbar Save button / autosave flush. */
   documentRef?: MutableRefObject<DocumentState>;
   /** Invoked when the top-nav W×H chip is clicked — EditorInner clears the selection here. */
@@ -55,11 +62,14 @@ export default function EditorLayout({
   elementProperties,
   onUpdateProperties,
   onBulkUpdateProperties,
+  onUpdateMany,
+  onCheckpoint,
   onPropertiesStart,
   onCanvasResizeStart,
   onMoveElement,
   onAlignmentStart,
   onLayerContextAction,
+  layerPanelActions,
   documentRef,
   onCanvasSettingsOpen,
   activeRightTab: controlledRightTab,
@@ -122,7 +132,10 @@ export default function EditorLayout({
       )}
 
       <div className="flex flex-1 overflow-hidden relative">
-        <EditorSidebar onLayerContextAction={onLayerContextAction} />
+        <EditorSidebar
+          onLayerContextAction={onLayerContextAction}
+          layerPanelActions={layerPanelActions}
+        />
 
         <main className="flex-1 overflow-auto flex items-center justify-center bg-zinc-950/50 relative shadow-[inset_0_0_100px_rgba(0,0,0,0.5)]">
           {/* Subtle grid pattern for the canvas background */}
@@ -142,6 +155,8 @@ export default function EditorLayout({
           elementProperties={elementProperties}
           onUpdateProperties={onUpdateProperties}
           onBulkUpdateProperties={onBulkUpdateProperties}
+          onUpdateMany={onUpdateMany}
+          onCheckpoint={onCheckpoint}
           onPropertiesStart={onPropertiesStart}
           onCanvasResizeStart={onCanvasResizeStart}
           onMoveElement={onMoveElement}

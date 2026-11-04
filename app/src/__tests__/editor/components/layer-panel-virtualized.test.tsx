@@ -237,8 +237,9 @@ describe("LayerPanel — virtualization", () => {
     const list = container.querySelector("ul");
     expect(list?.style.height).toBe(`${LARGE_COUNT * LAYER_TREE_ROW_HEIGHT}px`);
 
-    expect(screen.getByText("Layer 0")).toBeTruthy();
-    expect(screen.queryByText(`Layer ${LARGE_COUNT - 1}`)).toBeNull();
+    // Rows are frontmost-first: the last layer in document order is the top row.
+    expect(screen.getByText(`Layer ${LARGE_COUNT - 1}`)).toBeTruthy();
+    expect(screen.queryByText("Layer 0")).toBeNull();
   }, VIRTUALIZED_TEST_TIMEOUT);
 
   it("mounts the rows around the new offset when the viewport scrolls", () => {
@@ -252,21 +253,23 @@ describe("LayerPanel — virtualization", () => {
       fireEvent.scroll(scroller);
     });
 
-    expect(screen.getByText(`Layer ${LARGE_COUNT - 1}`)).toBeTruthy();
-    expect(screen.queryByText("Layer 0")).toBeNull();
+    // Scrolled to the bottom: the backmost layer is the last row.
+    expect(screen.getByText("Layer 0")).toBeTruthy();
+    expect(screen.queryByText(`Layer ${LARGE_COUNT - 1}`)).toBeNull();
   }, VIRTUALIZED_TEST_TIMEOUT);
 
   it("scrolls a selected row that is outside the window into view by index", () => {
     const scrollIntoView = vi.fn();
     scrollViewport({ scrollIntoView });
-    const deepId = `layer-${LARGE_COUNT - 1}`;
+    // layer-0 is the backmost layer, i.e. the bottom row.
+    const deepId = "layer-0";
 
     renderLargePanel(deepId);
 
     // The selected row was never mounted before the scroll, so the panel had to
     // go through `scrollToIndex` rather than the DOM fallback.
-    expect(screen.getByText(`Layer ${LARGE_COUNT - 1}`)).toBeTruthy();
-    expect(screen.queryByText("Layer 0")).toBeNull();
+    expect(screen.getByText("Layer 0")).toBeTruthy();
+    expect(screen.queryByText(`Layer ${LARGE_COUNT - 1}`)).toBeNull();
     expect(scrollIntoView).not.toHaveBeenCalled();
   }, VIRTUALIZED_TEST_TIMEOUT);
 });

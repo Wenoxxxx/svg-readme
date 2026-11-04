@@ -75,6 +75,42 @@ export function createComponent(
  * source was a master becomes an instance of that master's `componentId`
  * instead of a second master; everything else is returned untouched.
  */
+/** True for a layer that is a live instance (linked to an existing master). */
+export function isComponentInstance(
+  layer: LayerType,
+  layers: readonly LayerType[],
+): boolean {
+  if (layer.isComponent === true || !layer.componentId) return false;
+  return layers.some(
+    (candidate) =>
+      candidate.isComponent === true &&
+      (candidate.componentId ?? candidate.id) === layer.componentId,
+  );
+}
+
+/**
+ * Detach instance: clear the instance link on every selected instance so it
+ * becomes a plain group/layer. Returns null when nothing in the selection is
+ * an instance.
+ */
+export function detachInstances(
+  layers: LayerType[],
+  selectedLayerIds: readonly string[],
+): LayerType[] | null {
+  const selected = new Set(selectedLayerIds);
+  let changed = false;
+  const updated = layers.map((layer) => {
+    if (!selected.has(layer.id) || layer.isComponent === true || !layer.componentId) {
+      return layer;
+    }
+    changed = true;
+    const next = { ...layer };
+    delete next.componentId;
+    return next;
+  });
+  return changed ? updated : null;
+}
+
 export function linkInstancesToMasters(
   duplicatedLayers: LayerType[],
   sourceLayers: readonly LayerType[],

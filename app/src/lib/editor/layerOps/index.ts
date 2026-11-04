@@ -1,4 +1,14 @@
-export { flattenGroup, type FlattenResult } from "./flattenGroup";
+export {
+  flattenLayers,
+  canFlattenSelection,
+  type FlattenResult,
+} from "./flattenGroup";
+export {
+  buildSelectionExportDocument,
+  buildElementCss,
+  type SelectionExportDocument,
+} from "./selectionExport";
+export { findMatchingLayerIds } from "./selectMatching";
 export { wrapInFrame, toggleLayerMask } from "./frameOps";
 export { applyBooleanOp, type BooleanOp } from "./booleanOps";
 export { outlineText, outlineStroke } from "./outlineOps";
@@ -14,6 +24,8 @@ export {
 } from "./autoLayout";
 export {
   createComponent,
+  detachInstances,
+  isComponentInstance,
   linkInstancesToMasters,
   type CreateComponentResult,
 } from "./components";

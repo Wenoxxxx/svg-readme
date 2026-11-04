@@ -8,6 +8,8 @@ import {
   CaretRight,
   CaretDown,
   FolderOpen,
+  Diamond,
+  DiamondsFour,
 } from "@phosphor-icons/react";
 import type { LayerType } from "../../../context/EditorContext";
 import type { LayerDragInstruction } from "../../../lib/editor/layerTree/types";
@@ -116,6 +118,9 @@ export function LayerItem({
     actionsVisible: active || layer.locked || !layer.visible,
     dropPosition: dropPositionOf(instruction),
   });
+  // Figma: four diamonds = main component, one diamond = instance.
+  const componentRole =
+    layer.isComponent === true ? "component" : layer.componentId ? "instance" : null;
 
   return (
     <li
@@ -132,6 +137,7 @@ export function LayerItem({
       data-hidden={layer.visible ? "false" : "true"}
       data-drop-position={dropPositionOf(instruction) ?? "none"}
       data-drop-instruction={instruction?.type}
+      data-component-role={componentRole ?? undefined}
       draggable
       onDragStart={(e) => onDragStart(e, layer.id)}
       onDragOver={(e) => onDragOver(e, layer.id)}
@@ -179,6 +185,21 @@ export function LayerItem({
           <div className={classes.iconSlot}>
             <LayerIcon type={layer.type} className="w-3 h-3" />
           </div>
+        )}
+
+        {componentRole && (
+          <span
+            className="shrink-0 inline-flex items-center text-violet-400"
+            title={componentRole === "component" ? "Main component" : "Component instance"}
+            aria-label={componentRole === "component" ? "Main component" : "Component instance"}
+            data-testid={`layer-${componentRole}-badge`}
+          >
+            {componentRole === "component" ? (
+              <DiamondsFour weight="fill" className="w-3 h-3" />
+            ) : (
+              <Diamond className="w-3 h-3" />
+            )}
+          </span>
         )}
 
         {editingLayerId === layer.id ? (
